@@ -1,2 +1,5 @@
-# monkey.rs-2021
-monkey.rs in 2021 edition
+# Monkey Rust 2021 Edition
+
+```
+cargo run --bin runtime
+```

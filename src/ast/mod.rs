@@ -12,6 +12,7 @@ pub enum Literal {
 #[derive(PartialEq, Clone, Debug)]
 pub enum Expr {
     Literal(Literal),
+    Ident(Ident)
 }
 
 pub enum Stmt {
