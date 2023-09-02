@@ -75,6 +75,9 @@ impl Parser {
 
         let expr = match self.current_token /* ? */ {
             Token::Int(i) => {
+                if self.next_token == Token::Semicolon {
+                    self.bump();
+                }
                 Expr::Literal(Literal::Int(i))
             },
             _ => panic!("aaa{:?}", self.current_token)

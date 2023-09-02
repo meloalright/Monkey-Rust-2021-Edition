@@ -1,12 +1,54 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    Let,
-    Ident(String),
-    Assign,
-    Equal,
-    Int(i64),
     Illegal,
     Eof,
+
+    // identifiers + literals
+    Ident(String),
+    Int(i64),
+
+    // operations
+    Assign,
+    Plus,
+    Minus,
+    Bang,
+    Asterisk,
+    Slash,
+
+    LT,
+    GT,
+
+    // Delimiters
+    Comma,
+    Semicolon,
+
+    LParen, // (
+    RParen, // )
+    LBrace, // {
+    RBrace, // }
+    Dot,
+
+    // Keywords
+    Function,
+    Let,
+    True,
+    False,
+    If,
+    Else,
+    Return,
+
+    Equal,
+    NotEqual,
+
+    String(String),
+    Bool(bool),
+
+    LBracket,
+    RBracket,
+
+    Colon,
+
+    Blank,
 }
 
 
