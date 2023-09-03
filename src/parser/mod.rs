@@ -17,13 +17,13 @@ impl Parser {
             next_token: Token::Eof,
         };
 
-        parser.bump();
-        parser.bump();
+        parser.walk_token();
+        parser.walk_token();
 
         parser
     }
 
-    fn bump(&mut self) {
+    fn walk_token(&mut self) {
         self.current_token = self.next_token.clone();
         self.next_token = self.lexer.next_token();
     }
@@ -36,7 +36,7 @@ impl Parser {
                 Some(stmt) => program.push(stmt),
                 None => {}
             }
-            self.bump();
+            self.walk_token();
         }
 
         program
@@ -51,7 +51,7 @@ impl Parser {
 
     fn parse_let_stmt(&mut self) -> Option<Stmt> {
         match &self.next_token {
-            Token::Ident(_) => self.bump(),
+            Token::Ident(_) => self.walk_token(),
             _ => return None,
         };
 
@@ -60,38 +60,29 @@ impl Parser {
             None => return None,
         };
 
-        // if !self.expect_next_token(Token::Assign) {
-        //     return None;
-        // }
-        self.bump();
+        self.walk_token();
 
-        if self.current_token == Token::Assign {
-            // ok
+        if self.current_token != Token::Assign {
+            return None;
         }
 
-        self.bump();
+        self.walk_token();
 
-        // println!("aaa{:?}", self.current_token);
 
         let expr = match self.current_token /* ? */ {
             Token::Int(i) => {
                 if self.next_token == Token::Semicolon {
-                    self.bump();
+                    self.walk_token();
                 }
                 Expr::Literal(Literal::Int(i))
             },
             _ => panic!("aaa{:?}", self.current_token)
         };
 
-    
-        // let expr = match self.parse_expr(Precedence::Lowest) {
-        //     Some(expr) => expr,
-        //     None => return None,
-        // };
 
-        // if self.next_token_is(&Token::Semicolon) {
-        //     self.bump();
-        // }
+        if self.next_token_is(Token::Semicolon) {
+            self.walk_token();
+        }
 
         Some(Stmt::Let(name, expr))
     }
@@ -102,6 +93,14 @@ impl Parser {
             Token::Ident(ref mut ident) => Some(Ident(ident.clone())),
             _ => None,
         }
+    }
+
+    fn current_token_is(&mut self, tok: Token) -> bool {
+        self.current_token == tok
+    }
+
+    fn next_token_is(&mut self, tok: Token) -> bool {
+        self.next_token == tok
     }
 
 
@@ -146,5 +145,14 @@ mod tests {
             },
             _ => {}
         }
+    }
+
+    #[test]
+    fn test_parser_illegal_let_stmt() {
+
+        let mut lexer = Lexer::new(r"let five 5");
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse();
+        assert_eq!(program.len(), 0);
     }
 }
