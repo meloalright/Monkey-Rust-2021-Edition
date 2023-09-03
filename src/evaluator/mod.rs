@@ -8,10 +8,10 @@ pub struct Evaluator {
 }
 
 impl Evaluator {
-    fn eval(&mut self, program: &ast::Program) {
+    pub fn eval(&mut self, program: &ast::Program) {
         for stmt in program {
             match self.eval_stmt(stmt) {
-                _ => println!("env? {:?}", self.env)
+                _ => println!("env {:?}", self.env)
             }
         }
     }
