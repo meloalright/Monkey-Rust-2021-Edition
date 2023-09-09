@@ -45,7 +45,12 @@ impl Parser {
     fn parse_stmt(&mut self) -> Option<Stmt> {
         match self.current_token {
             Token::Let => self.parse_let_stmt(),
-            _ => panic!(),
+            Token::Return => self.parse_return_stmt(),
+            Token::Ident(_) => match self.next_token {
+                Token::Assign => self.parse_reassign_stmt(),
+                _ => self.parse_expr_stmt()
+            }
+            _ => self.parse_expr_stmt(),
         }
     }
 
@@ -87,6 +92,83 @@ impl Parser {
         Some(Stmt::Let(name, expr))
     }
 
+
+    fn parse_return_stmt(&mut self) -> Option<Stmt> {
+        self.walk_token();
+
+        let expr = match self.parse_expr() {
+            Some(expr) => expr,
+            _ => return None
+        };
+
+        if self.next_token_is(Token::Semicolon) {
+            self.walk_token();
+        }
+
+        Some(Stmt::Return(expr))
+    }
+
+    fn parse_expr_stmt(&mut self) -> Option<Stmt> {
+        let expr = match self.parse_expr() {
+            Some(expr) => expr,
+            _ => return None
+        };
+
+        if self.next_token_is(Token::Semicolon) {
+            self.walk_token();
+        }
+
+        Some(Stmt::Expr(expr))
+    }
+
+    fn parse_reassign_stmt(&mut self) -> Option<Stmt> {
+        let name = match self.parse_ident() {
+            Some(name) => name,
+            None => return None
+        };
+
+        if !self.next_token_is(Token::Assign) {
+            return None;
+        } else {
+            self.walk_token();
+        }
+
+        self.walk_token();
+
+        let expr = match self.parse_expr() {
+            Some(expr) => expr,
+            None => return None
+        };
+
+        if self.next_token_is(Token::Semicolon) {
+            self.walk_token();
+        }
+
+        Some(Stmt::ReAssign(name, expr))
+    }
+    
+    fn parse_expr(&mut self) -> Option<Expr> {
+        let mut left = match self.current_token {
+            Token::Ident(_) => self.parse_ident_expr(),
+            Token::Int(_) => self.parse_int_expr(),
+            _ => {
+                None
+            }
+        };
+
+        left
+    }
+
+    fn parse_ident_expr(&mut self) -> Option<Expr> {
+        self.parse_ident().map(Expr::Ident)
+    }
+
+    fn parse_int_expr(&mut self) -> Option<Expr> {
+        match self.current_token {
+            Token::Int(ref mut int) => Some(Expr::Literal(Literal::Int(*int))),
+            _ => None,
+        }
+    }
 
     fn parse_ident(&mut self) -> Option<Ident> {
         match self.current_token {
@@ -134,16 +216,97 @@ mod tests {
                                     Literal::Int(i) => {
                                         assert_eq!(*i, 5i64)
                                     },
-                                    _ => {}
+                                    _ => todo!()
                                 }
                             },
-                            _ => {}
+                            _ => todo!()
                         }
                     },
-                    _ => {}
+                    _ => todo!()
                 }
             },
-            _ => {}
+            _ => todo!()
+        }
+    }
+
+    #[test]
+    fn test_parser_return_stmt() {
+
+        let mut lexer = Lexer::new(r"return a");
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse();
+        assert_eq!(program.len(), 1);
+        match program.get(0) {
+            Some(stmt) => {
+                match stmt {
+                    Stmt::Return(expr) => {
+                        match expr {
+                            Expr::Ident(ltr) => {
+                                assert_eq!(ltr.0, "a")
+                            },
+                            _ => todo!()
+                        }
+                    },
+                    _ => todo!()
+                }
+            },
+            _ => todo!()
+        }
+    }
+
+    #[test]
+    fn test_parser_expr_stmt() {
+
+        let mut lexer = Lexer::new(r"i");
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse();
+        assert_eq!(program.len(), 1);
+        match program.get(0) {
+            Some(stmt) => {
+                match stmt {
+                    Stmt::Expr(expr) => {
+                        match expr {
+                            Expr::Ident(ltr) => {
+                                assert_eq!(ltr.0, "i")
+                            },
+                            _ => todo!()
+                        }
+                    },
+                    _ => todo!()
+                }
+            },
+            _ => todo!()
+        }
+    }
+
+    #[test]
+    fn test_parser_reassign_stmt() {
+
+        let mut lexer = Lexer::new(r"i = 3");
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse();
+        assert_eq!(program.len(), 1);
+        match program.get(0) {
+            Some(stmt) => {
+                match stmt {
+                    Stmt::ReAssign(name, expr) => {
+                        assert_eq!(name.0, "i");
+                        match expr {
+                            Expr::Literal(ltr) => {
+                                match ltr {
+                                    Literal::Int(i) => {
+                                        assert_eq!(*i, 3i64)
+                                    },
+                                    _ => todo!()
+                                }
+                            },
+                            _ => todo!()
+                        }
+                    },
+                    _ => todo!()
+                }
+            },
+            _ => todo!()
         }
     }
 

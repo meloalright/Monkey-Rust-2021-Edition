@@ -16,7 +16,10 @@ pub enum Expr {
 }
 
 pub enum Stmt {
-    Let(Ident, Expr)
+    Let(Ident, Expr),
+    Return(Expr),
+    Expr(Expr),
+    ReAssign(Ident, Expr)
 }
 
 pub type BlockStmt = Vec<Stmt>;
