@@ -15,6 +15,9 @@ pub enum Token {
     Asterisk,
     Slash,
 
+    // condition
+    While,
+
     LT,
     GT,
 

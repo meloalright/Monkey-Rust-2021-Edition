@@ -12,9 +12,14 @@ pub enum Literal {
 #[derive(PartialEq, Clone, Debug)]
 pub enum Expr {
     Literal(Literal),
-    Ident(Ident)
+    Ident(Ident),
+    While {
+        cond: Box<Expr>,
+        consequence: BlockStmt,
+    },
 }
 
+#[derive(PartialEq, Clone, Debug)]
 pub enum Stmt {
     Let(Ident, Expr),
     Return(Expr),

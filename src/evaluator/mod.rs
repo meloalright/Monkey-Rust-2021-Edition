@@ -54,25 +54,75 @@ impl Evaluator {
 
     fn eval_expr(&mut self, expr: &ast::Expr) -> Option<object::Object> {
         match expr {
+            ast::Expr::Ident(ident) => Some(self.eval_ident(ident)),
             ast::Expr::Literal(literal) => Some(self.eval_literal(literal)),
+            ast::Expr::While { cond, consequence } => self.eval_while_expr(&*cond, consequence),
             _ => { None }
         }
     }
 
-    // fn eval_ident(&mut self, ident: &ast::Ident) -> object::Object {
-    //     let ast::Ident(name) = ident;
+    fn eval_ident(&mut self, ident: &ast::Ident) -> object::Object {
+        let ast::Ident(name) = ident;
 
-    //     match self.env.get(name.clone()) {
-    //         Some(value) => value,
-    //         None => panic!(),
-    //     }
-    // }
+        match self.env.get(name.clone()) {
+            Some(value) => value,
+            None => panic!(),
+        }
+    }
 
 
     fn eval_literal(&mut self, literal: &ast::Literal) -> object::Object {
         match literal {
             ast::Literal::Int(value) => object::Object::Int(*value),
             _ => panic!()
+        }
+    }
+
+    fn eval_while_expr(&mut self, cond: &ast::Expr, consequence: &ast::BlockStmt) -> Option<object::Object> {
+        let mut result: Option<object::Object> = None;
+        loop {
+            let cond_result = match self.eval_expr(cond) {
+                Some(cond) => cond,
+                None => break,
+            };
+            if !Self::is_truthy(cond_result.clone()) {
+                break;
+            }
+            self.eval_block_stmt_with_continue_and_break_statement(consequence);
+        }
+        result
+    }
+
+
+
+    fn eval_block_stmt_with_continue_and_break_statement(&mut self, stmts: &ast::BlockStmt) -> Option<object::Object> {
+        let mut result = None;
+
+        for stmt in stmts {
+            // if *stmt == ast::Stmt::Blank {
+            //     continue;
+            // }
+
+            match self.eval_stmt(stmt) {
+                // Some(object::Object::ReturnValue(value)) => return Some(object::Object::ReturnValue(value)),
+                // Some(Object::BreakStatement) => return Some(Object::BreakStatement),
+                // Some(Object::ContinueStatement) => return Some(Object::ContinueStatement),
+                // Some(Object::Error(msg)) => return Some(Object::Error(msg)),
+                obj => result = obj,
+                _ => todo!()
+            }
+        }
+
+        result
+    }
+
+
+
+    fn is_truthy(obj: object::Object) -> bool {
+        match obj {
+            object::Object::Int(0) => false,
+            // todo
+            _ => true,
         }
     }
 }
@@ -128,6 +178,15 @@ mod tests {
     #[test]
     fn test_reassign_evaluator() {
         let mut lexer = Lexer::new(r"let five = 5; five = 6");
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse();
+        let mut evaluator = Evaluator { env: env::Env::new() };
+        evaluator.eval(&program);
+    }
+
+    #[test]
+    fn test_while_evaluator() {
+        let mut lexer = Lexer::new(r"let a = 5; while (a) { a = 0; }");
         let mut parser = Parser::new(lexer);
         let program = parser.parse();
         let mut evaluator = Evaluator { env: env::Env::new() };

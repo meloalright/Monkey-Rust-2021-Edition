@@ -151,6 +151,7 @@ impl Parser {
         let mut left = match self.current_token {
             Token::Ident(_) => self.parse_ident_expr(),
             Token::Int(_) => self.parse_int_expr(),
+            Token::While => self.parse_while_expr(),
             _ => {
                 None
             }
@@ -158,6 +159,9 @@ impl Parser {
 
         left
     }
+
+
+    // parse expr ...
 
     fn parse_ident_expr(&mut self) -> Option<Expr> {
         self.parse_ident().map(Expr::Ident)
@@ -169,6 +173,58 @@ impl Parser {
             _ => None,
         }
     }
+
+    fn parse_while_expr(&mut self) -> Option<Expr> {
+        if !self.next_token_is(Token::LParen) {
+            return None;
+        }
+
+        self.walk_token();
+        self.walk_token();
+
+        let cond = match self.parse_expr() {
+            Some(expr) => expr,
+            None => return None,
+        };
+
+        if !self.next_token_is(Token::RParen) {
+            return None;
+        }
+        self.walk_token();
+
+        if !self.next_token_is(Token::LBrace) {
+            return None;
+        }
+        self.walk_token();
+
+        let consequence = self.parse_block_stmt();
+
+        Some(Expr::While {
+            cond: Box::new(cond),
+            consequence,
+        })
+    }
+
+    
+    fn parse_block_stmt(&mut self) -> BlockStmt {
+        self.walk_token();
+
+        let mut block: Vec<Stmt> = vec![];
+
+        while !self.current_token_is(Token::RBrace) {
+            
+            match self.parse_stmt() {
+                Some(stmt) => block.push(stmt),
+                None => {}
+            }
+            self.walk_token();
+        }
+
+        block
+    }
+
+
+    // 
 
     fn parse_ident(&mut self) -> Option<Ident> {
         match self.current_token {
@@ -296,6 +352,60 @@ mod tests {
                                 match ltr {
                                     Literal::Int(i) => {
                                         assert_eq!(*i, 3i64)
+                                    },
+                                    _ => todo!()
+                                }
+                            },
+                            _ => todo!()
+                        }
+                    },
+                    _ => todo!()
+                }
+            },
+            _ => todo!()
+        }
+    }
+
+    #[test]
+    fn test_parser_while_stmt() {
+
+        let mut lexer = Lexer::new(r"while (w) { q = 5 }");
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse();
+        println!("{:?}", program);
+        assert_eq!(program.len(), 1);
+        match program.get(0) {
+            Some(stmt) => {
+                match stmt {
+                    Stmt::Expr(expr) => {
+                        match expr {
+                            Expr::While { cond, consequence } => {
+                                match *cond.clone() {
+                                    Expr::Ident(ident) => {
+                                        assert_eq!(ident.0, "w")
+                                    },
+                                    _ => todo!()
+                                }
+                                assert_eq!(consequence.len(), 1);
+                                match consequence.get(0) {
+                                    Some(stmt) => {
+                                        match stmt {
+                                            Stmt::ReAssign(ident, expr) => {
+                                                assert_eq!(ident.0, "q");
+                                                match expr {
+                                                    Expr::Literal(ltr) => {
+                                                        match ltr {
+                                                            Literal::Int(i) => {
+                                                                assert_eq!(*i, 5i64)
+                                                            },
+                                                            _ => todo!()
+                                                        }
+                                                    },
+                                                    _ => todo!()
+                                                }
+                                            },
+                                            _ => todo!()
+                                        }
                                     },
                                     _ => todo!()
                                 }
