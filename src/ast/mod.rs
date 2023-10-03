@@ -28,6 +28,7 @@ pub enum Expr {
 pub enum Stmt {
     Let(Ident, Expr),
     Break,
+    Blank,
     Continue,
     Return(Expr),
     Expr(Expr),

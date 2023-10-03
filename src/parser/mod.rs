@@ -45,6 +45,7 @@ impl Parser {
     fn parse_stmt(&mut self) -> Option<Stmt> {
         match self.current_token {
             Token::Let => self.parse_let_stmt(),
+            Token::Const => todo!(),
             Token::Return => self.parse_return_stmt(),
             Token::Ident(_) => match self.next_token {
                 Token::Assign => self.parse_reassign_stmt(),
@@ -52,6 +53,7 @@ impl Parser {
             },
             Token::Break => self.parse_break_stmt(),
             Token::Continue => self.parse_continue_stmt(),
+            Token::Blank => Some(Stmt::Blank),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -172,12 +174,57 @@ impl Parser {
         let mut left = match self.current_token {
             Token::Ident(_) => self.parse_ident_expr(),
             Token::Int(_) => self.parse_int_expr(),
+            Token::String(_) => todo!(),
+            Token::Bool(_) => todo!(),
+            Token::LBracket => todo!(),
+            Token::LBrace => todo!(),
+            Token::LParen => todo!(),
+            Token::Bang | Token::Minus | Token::Plus => todo!(),
             Token::If => self.parse_if_expr(),
             Token::While => self.parse_while_expr(),
+            Token::Function => todo!(),
             _ => {
+                // todo!();
                 None
             }
         };
+
+        // infix
+        // while !self.next_token_is(Token::Semicolon) /*&& precedence < self.next_token_precedence() */ {
+        //     match self.next_token {
+        //         Token::Plus
+        //         | Token::Minus
+        //         | Token::Slash
+        //         | Token::Asterisk
+        //         | Token::Equal
+        //         | Token::NotEqual
+        //         /* | Token::LessThan
+        //         | Token::LessThanEqual
+        //         | Token::GreaterThan
+        //         | Token::GreaterThanEqual */ => {
+        //             // self.walk_token();
+        //             todo!()
+        //             // left = self.parse_infix_expr(left.unwrap());
+        //         }
+        //         Token::LBracket => {
+        //             self.walk_token();
+        //             todo!()
+        //             // left = self.parse_index_expr(left.unwrap());
+        //         }
+        //         Token::Dot => {
+        //             self.walk_token();
+        //             todo!()
+        //             // left = self.parse_dot_index_expr(left.unwrap());
+        //         }
+        //         Token::LParen => {
+        //             self.walk_token();
+        //             todo!()
+        //             // left = self.parse_call_expr(left.unwrap());
+        //         }
+        //         _ => return left,
+        //     }
+        // }
+        // // todo
 
         left
     }
@@ -226,8 +273,10 @@ impl Parser {
         if self.next_token_is(Token::Else) {
             self.walk_token();
             if !self.next_token_is(Token::LBrace) {
+                self.walk_token();
                 return None;
             }
+            self.walk_token();
 
             alternative = Some(self.parse_block_stmt());
         }
