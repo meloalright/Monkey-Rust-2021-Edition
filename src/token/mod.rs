@@ -38,6 +38,8 @@ pub enum Token {
     False,
     If,
     Else,
+    Break,
+    Continue,
     Return,
 
     Equal,

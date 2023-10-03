@@ -31,6 +31,12 @@ impl Evaluator {
                 self.env.set(name.clone(), value);
                 None
             },
+            ast::Stmt::Break => {
+                Some(object::Object::BreakStatement)
+            },
+            ast::Stmt::Continue => {
+                None
+            },
             ast::Stmt::Return(expr) => {
                 let value = match self.eval_expr(expr) {
                     Some(value) => value,
@@ -88,7 +94,18 @@ impl Evaluator {
             if !Self::is_truthy(cond_result.clone()) {
                 break;
             }
-            self.eval_block_stmt_with_continue_and_break_statement(consequence);
+            match self.eval_block_stmt_with_continue_and_break_statement(consequence) {
+                Some(object::Object::BreakStatement) => {
+                    result = Some(object::Object::Null);
+                    break;
+                },
+                Some(object::Object::ContinueStatement) => {
+                    result = Some(object::Object::Null);
+                    continue;
+                },
+                Some(object::Object::ReturnValue(value)) => return Some(object::Object::ReturnValue(value)),
+                _ => {}
+            }
         }
         result
     }
@@ -104,10 +121,10 @@ impl Evaluator {
             // }
 
             match self.eval_stmt(stmt) {
-                // Some(object::Object::ReturnValue(value)) => return Some(object::Object::ReturnValue(value)),
-                // Some(Object::BreakStatement) => return Some(Object::BreakStatement),
-                // Some(Object::ContinueStatement) => return Some(Object::ContinueStatement),
-                // Some(Object::Error(msg)) => return Some(Object::Error(msg)),
+                Some(object::Object::ReturnValue(value)) => return Some(object::Object::ReturnValue(value)),
+                Some(object::Object::BreakStatement) => return Some(object::Object::BreakStatement),
+                Some(object::Object::ContinueStatement) => return Some(object::Object::ContinueStatement),
+                Some(object::Object::Error(msg)) => return Some(object::Object::Error(msg)),
                 obj => result = obj,
                 _ => todo!()
             }
@@ -189,6 +206,25 @@ mod tests {
         let mut lexer = Lexer::new(r"let a = 5; while (a) { a = 0; }");
         let mut parser = Parser::new(lexer);
         let program = parser.parse();
+        let mut evaluator = Evaluator { env: env::Env::new() };
+        evaluator.eval(&program);
+    }
+
+    #[test]
+    fn test_break_evaluator() {
+        let mut lexer = Lexer::new(r"let a = 5; while (a) { a = 3; break; }");
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse();
+        let mut evaluator = Evaluator { env: env::Env::new() };
+        evaluator.eval(&program);
+    }
+
+    #[test]
+    fn test_continue_evaluator() {
+        let mut lexer = Lexer::new(r"let a = 5; while (a) { a = 3; continue; }");
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse();
+        println!("program {:?}", program);
         let mut evaluator = Evaluator { env: env::Env::new() };
         evaluator.eval(&program);
     }

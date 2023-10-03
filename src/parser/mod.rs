@@ -49,7 +49,9 @@ impl Parser {
             Token::Ident(_) => match self.next_token {
                 Token::Assign => self.parse_reassign_stmt(),
                 _ => self.parse_expr_stmt()
-            }
+            },
+            Token::Break => self.parse_break_stmt(),
+            Token::Continue => self.parse_continue_stmt(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -92,6 +94,25 @@ impl Parser {
         Some(Stmt::Let(name, expr))
     }
 
+    fn parse_break_stmt(&mut self) -> Option<Stmt> {
+        self.walk_token();
+
+        if self.next_token_is(Token::Semicolon) {
+            self.walk_token();
+        }
+
+        Some(Stmt::Break)
+    }
+
+    fn parse_continue_stmt(&mut self) -> Option<Stmt> {
+        self.walk_token();
+
+        if self.next_token_is(Token::Semicolon) {
+            self.walk_token();
+        }
+
+        Some(Stmt::Continue)
+    }
 
     fn parse_return_stmt(&mut self) -> Option<Stmt> {
         self.walk_token();
@@ -406,6 +427,84 @@ mod tests {
                                             },
                                             _ => todo!()
                                         }
+                                    },
+                                    _ => todo!()
+                                }
+                            },
+                            _ => todo!()
+                        }
+                    },
+                    _ => todo!()
+                }
+            },
+            _ => todo!()
+        }
+    }
+
+
+    #[test]
+    fn test_parser_break_stmt() {
+
+        let mut lexer = Lexer::new(r"while (w) { break; }");
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse();
+        println!("{:?}", program);
+        assert_eq!(program.len(), 1);
+        match program.get(0) {
+            Some(stmt) => {
+                match stmt {
+                    Stmt::Expr(expr) => {
+                        match expr {
+                            Expr::While { cond, consequence } => {
+                                match *cond.clone() {
+                                    Expr::Ident(ident) => {
+                                        assert_eq!(ident.0, "w")
+                                    },
+                                    _ => todo!()
+                                }
+                                assert_eq!(consequence.len(), 1);
+                                match consequence.get(0) {
+                                    Some(stmt) => {
+                                        assert_eq!(stmt, &Stmt::Break);
+                                    },
+                                    _ => todo!()
+                                }
+                            },
+                            _ => todo!()
+                        }
+                    },
+                    _ => todo!()
+                }
+            },
+            _ => todo!()
+        }
+    }
+
+
+    #[test]
+    fn test_parser_continue_stmt() {
+
+        let mut lexer = Lexer::new(r"while (w) { continue; }");
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse();
+        println!("{:?}", program);
+        assert_eq!(program.len(), 1);
+        match program.get(0) {
+            Some(stmt) => {
+                match stmt {
+                    Stmt::Expr(expr) => {
+                        match expr {
+                            Expr::While { cond, consequence } => {
+                                match *cond.clone() {
+                                    Expr::Ident(ident) => {
+                                        assert_eq!(ident.0, "w")
+                                    },
+                                    _ => todo!()
+                                }
+                                assert_eq!(consequence.len(), 1);
+                                match consequence.get(0) {
+                                    Some(stmt) => {
+                                        assert_eq!(stmt, &Stmt::Continue);
                                     },
                                     _ => todo!()
                                 }
