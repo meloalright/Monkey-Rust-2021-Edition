@@ -63,6 +63,11 @@ impl Evaluator {
             ast::Expr::Ident(ident) => Some(self.eval_ident(ident)),
             ast::Expr::Literal(literal) => Some(self.eval_literal(literal)),
             ast::Expr::While { cond, consequence } => self.eval_while_expr(&*cond, consequence),
+            ast::Expr::If {
+                cond,
+                consequence,
+                alternative,
+            } => self.eval_if_expr(&*cond, consequence, alternative),
             _ => { None }
         }
     }
@@ -110,7 +115,46 @@ impl Evaluator {
         result
     }
 
+    fn eval_if_expr(
+        &mut self,
+        cond: &ast::Expr,
+        consequence: &ast::BlockStmt,
+        alternative: &Option<ast::BlockStmt>,
+    ) -> Option<object::Object> {
+        let cond = match self.eval_expr(cond) {
+            Some(cond) => cond,
+            None => return None,
+        };
 
+        if Self::is_truthy(cond) {
+            self.eval_block_stmt(consequence)
+        } else if let Some(alt) = alternative {
+            self.eval_block_stmt(alt)
+        } else {
+            None
+        }
+    }
+
+
+
+    fn eval_block_stmt(&mut self, stmts: &ast::BlockStmt) -> Option<object::Object> {
+        let mut result = None;
+
+        for stmt in stmts {
+            // if *stmt == ast::Stmt::Blank {
+            //     continue;
+            // }
+
+            match self.eval_stmt(stmt) {
+                Some(object::Object::ReturnValue(value)) => return Some(object::Object::ReturnValue(value)),
+                Some(object::Object::Error(msg)) => return Some(object::Object::Error(msg)),
+                obj => result = obj,
+                _ => todo!()
+            }
+        }
+
+        result
+    }
 
     fn eval_block_stmt_with_continue_and_break_statement(&mut self, stmts: &ast::BlockStmt) -> Option<object::Object> {
         let mut result = None;
@@ -220,8 +264,18 @@ mod tests {
     }
 
     #[test]
+    fn test_if_else_evaluator() {
+        let mut lexer = Lexer::new(r"let a = 2; let b = 0;; if (a) { b = 1 } else { b = 2 }");
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse();
+        println!("program {:?}", program);
+        let mut evaluator = Evaluator { env: env::Env::new() };
+        evaluator.eval(&program);
+    }
+
+    #[test]
     fn test_continue_evaluator() {
-        let mut lexer = Lexer::new(r"let a = 5; while (a) { a = 3; continue; }");
+        let mut lexer = Lexer::new(r"let a = 5; let b = 7; while (a) { if (b) { a = 3; b = 0; continue; } else { a = 0; b = 1; break; } }");
         let mut parser = Parser::new(lexer);
         let program = parser.parse();
         println!("program {:?}", program);

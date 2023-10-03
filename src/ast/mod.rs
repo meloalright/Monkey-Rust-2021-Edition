@@ -17,6 +17,11 @@ pub enum Expr {
         cond: Box<Expr>,
         consequence: BlockStmt,
     },
+    If {
+        cond: Box<Expr>,
+        consequence: BlockStmt,
+        alternative: Option<BlockStmt>,
+    },
 }
 
 #[derive(PartialEq, Clone, Debug)]

@@ -172,6 +172,7 @@ impl Parser {
         let mut left = match self.current_token {
             Token::Ident(_) => self.parse_ident_expr(),
             Token::Int(_) => self.parse_int_expr(),
+            Token::If => self.parse_if_expr(),
             Token::While => self.parse_while_expr(),
             _ => {
                 None
@@ -193,6 +194,46 @@ impl Parser {
             Token::Int(ref mut int) => Some(Expr::Literal(Literal::Int(*int))),
             _ => None,
         }
+    }
+
+    fn parse_if_expr(&mut self) -> Option<Expr> {
+        if !self.next_token_is(Token::LParen) {
+            return None;
+        }
+
+        self.walk_token();
+        self.walk_token();
+
+        let cond = match self.parse_expr() {
+            Some(expr) => expr,
+            None => return None,
+        };
+
+        if !self.next_token_is(Token::RParen) {
+            return None;
+        }
+        self.walk_token();
+
+        if !self.next_token_is(Token::LBrace) {
+            return None;
+        }
+        self.walk_token();
+
+        let consequence = self.parse_block_stmt();
+
+        let mut alternative = None;
+
+        if self.next_token_is(Token::Else) {
+            self.walk_token();
+            if !self.next_token_is(Token::LBrace) {
+                return None;
+            }
+
+            alternative = Some(self.parse_block_stmt());
+        }
+
+        Some(Expr::If { cond: Box::new(cond), consequence, alternative })
+
     }
 
     fn parse_while_expr(&mut self) -> Option<Expr> {
@@ -527,4 +568,86 @@ mod tests {
         let program = parser.parse();
         assert_eq!(program.len(), 0);
     }
+
+
+    #[test]
+    fn test_parser_if_stmt() {
+
+        let mut lexer = Lexer::new(r"if (w) { q = 5 } else { q = 1 }");
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse();
+        println!("{:?}", program);
+        assert_eq!(program.len(), 1);
+        match program.get(0) {
+            Some(stmt) => {
+                match stmt {
+                    Stmt::Expr(expr) => {
+                        match expr {
+                            Expr::If { cond, consequence, alternative } => {
+                                match *cond.clone() {
+                                    Expr::Ident(ident) => {
+                                        assert_eq!(ident.0, "w")
+                                    },
+                                    _ => todo!()
+                                }
+                                assert_eq!(consequence.len(), 1);
+                                match consequence.get(0) {
+                                    Some(stmt) => {
+                                        match stmt {
+                                            Stmt::ReAssign(ident, expr) => {
+                                                assert_eq!(ident.0, "q");
+                                                match expr {
+                                                    Expr::Literal(ltr) => {
+                                                        match ltr {
+                                                            Literal::Int(i) => {
+                                                                assert_eq!(*i, 5i64)
+                                                            },
+                                                            _ => todo!()
+                                                        }
+                                                    },
+                                                    _ => todo!()
+                                                }
+                                            },
+                                            _ => todo!()
+                                        }
+                                    },
+                                    _ => todo!()
+                                }
+                                if let Some(alternative) = alternative {
+                                    assert_eq!(alternative.len(), 1);
+                                    match alternative.get(0) {
+                                        Some(stmt) => {
+                                            match stmt {
+                                                Stmt::ReAssign(ident, expr) => {
+                                                    assert_eq!(ident.0, "q");
+                                                    match expr {
+                                                        Expr::Literal(ltr) => {
+                                                            match ltr {
+                                                                Literal::Int(i) => {
+                                                                    assert_eq!(*i, 1i64)
+                                                                },
+                                                                _ => todo!()
+                                                            }
+                                                        },
+                                                        _ => todo!()
+                                                    }
+                                                },
+                                                _ => todo!()
+                                            }
+                                        },
+                                        _ => todo!()
+                                    }
+                                }
+                            },
+                            _ => todo!()
+                        }
+                    },
+                    _ => todo!()
+                }
+            },
+            _ => todo!()
+        }
+    }
+
+
 }
