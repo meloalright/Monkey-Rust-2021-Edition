@@ -27,6 +27,7 @@ pub enum Expr {
 #[derive(PartialEq, Clone, Debug)]
 pub enum Stmt {
     Let(Ident, Expr),
+    Const(Ident, Expr),
     Break,
     Blank,
     Continue,

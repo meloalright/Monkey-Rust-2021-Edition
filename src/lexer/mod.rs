@@ -171,6 +171,7 @@ impl Lexer {
 
         match literal.as_str() {
             "let" => Token::Let,
+            "const" => Token::Const,
             "fn" => Token::Function,
             "true" => Token::Bool(true),
             "false" => Token::Bool(false),
