@@ -55,8 +55,22 @@ impl Lexer {
             '-' => Token::Minus,
             '/' => Token::Slash,
             '*' => Token::Asterisk,
-            '<' => Token::LT,
-            '>' => Token::GT,
+            '<' => {
+                if self.next_is('=') {
+                    self.walk_char();
+                    Token::LTEQ
+                } else {
+                    Token::LT
+                }
+            },
+            '>' => {
+                if self.next_is('=') {
+                    self.walk_char();
+                    Token::GTEQ
+                } else {
+                    Token::GT
+                }
+            },
             ';' => Token::Semicolon,
             ',' => Token::Comma,
             '(' => Token::LParen,

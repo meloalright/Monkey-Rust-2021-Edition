@@ -20,6 +20,8 @@ pub enum Token {
 
     LT,
     GT,
+    LTEQ,
+    GTEQ,
 
     // Delimiters
     Comma,

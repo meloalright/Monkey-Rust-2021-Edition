@@ -9,10 +9,63 @@ pub enum Literal {
     Bool(bool),
 }
 
+/// prefix
+#[derive(PartialEq, Clone, Debug)]
+pub enum Prefix {
+    Plus,
+    Minus,
+    Not,
+}
+
+impl std::fmt::Display for Prefix {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match *self {
+            Prefix::Plus => write!(f, "+"),
+            Prefix::Minus => write!(f, "-"),
+            Prefix::Not => write!(f, "!"),
+        }
+    }
+}
+
+/// infix
+#[derive(PartialEq, Clone, Debug)]
+pub enum Infix {
+    Plus,
+    Minus,
+    Divide,
+    Multiply,
+    Equal,
+    NotEqual,
+    GTEQ,
+    GT,
+    LTEQ,
+    LT,
+}
+
+impl std::fmt::Display for Infix {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match *self {
+            Infix::Plus => write!(f, "+"),
+            Infix::Minus => write!(f, "-"),
+            Infix::Divide => write!(f, "/"),
+            Infix::Multiply => write!(f, "*"),
+            Infix::Equal => write!(f, "=="),
+            Infix::NotEqual => write!(f, "!="),
+            Infix::GTEQ => write!(f, ">="),
+            Infix::GT => write!(f, ">"),
+            Infix::LTEQ => write!(f, "<="),
+            Infix::LT => write!(f, "<"),
+        }
+    }
+}
+
+/// expr
 #[derive(PartialEq, Clone, Debug)]
 pub enum Expr {
     Literal(Literal),
     Ident(Ident),
+    Prefix(Prefix, Box<Expr>),
+    Infix(Infix, Box<Expr>, Box<Expr>),
     While {
         cond: Box<Expr>,
         consequence: BlockStmt,

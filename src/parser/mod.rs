@@ -271,7 +271,7 @@ impl Parser {
             Token::LBracket => todo!(),
             Token::LBrace => todo!(),
             Token::LParen => todo!(),
-            Token::Bang | Token::Minus | Token::Plus => todo!(),
+            Token::Bang | Token::Minus | Token::Plus => self.parse_prefix_expr(),
             Token::If => self.parse_if_expr(),
             Token::While => self.parse_while_expr(),
             Token::Function => todo!(),
@@ -282,40 +282,39 @@ impl Parser {
         };
 
         // infix
-        // while !self.next_token_is(Token::Semicolon) /*&& precedence < self.next_token_precedence() */ {
-        //     match self.next_token {
-        //         Token::Plus
-        //         | Token::Minus
-        //         | Token::Slash
-        //         | Token::Asterisk
-        //         | Token::Equal
-        //         | Token::NotEqual
-        //         /* | Token::LessThan
-        //         | Token::LessThanEqual
-        //         | Token::GreaterThan
-        //         | Token::GreaterThanEqual */ => {
-        //             // self.walk_token();
-        //             todo!()
-        //             // left = self.parse_infix_expr(left.unwrap());
-        //         }
-        //         Token::LBracket => {
-        //             self.walk_token();
-        //             todo!()
-        //             // left = self.parse_index_expr(left.unwrap());
-        //         }
-        //         Token::Dot => {
-        //             self.walk_token();
-        //             todo!()
-        //             // left = self.parse_dot_index_expr(left.unwrap());
-        //         }
-        //         Token::LParen => {
-        //             self.walk_token();
-        //             todo!()
-        //             // left = self.parse_call_expr(left.unwrap());
-        //         }
-        //         _ => return left,
-        //     }
-        // }
+        while !self.next_token_is(Token::Semicolon) /*&& precedence < self.next_token_precedence() */ {
+            match self.next_token {
+                Token::Plus
+                | Token::Minus
+                | Token::Slash
+                | Token::Asterisk
+                | Token::Equal
+                | Token::NotEqual
+                | Token::LT
+                | Token::LTEQ
+                | Token::GT
+                | Token::GTEQ => {
+                    self.walk_token();
+                    left = self.parse_infix_expr(left.unwrap());
+                }
+                Token::LBracket => {
+                    self.walk_token();
+                    todo!()
+                    // left = self.parse_index_expr(left.unwrap());
+                }
+                Token::Dot => {
+                    self.walk_token();
+                    todo!()
+                    // left = self.parse_dot_index_expr(left.unwrap());
+                }
+                Token::LParen => {
+                    self.walk_token();
+                    todo!()
+                    // left = self.parse_call_expr(left.unwrap());
+                }
+                _ => return left,
+            }
+        }
         // // todo
 
         left
@@ -332,6 +331,43 @@ impl Parser {
             Token::Int(ref mut int) => Some(Expr::Literal(Literal::Int(*int))),
             _ => None,
         }
+    }
+
+    /// prefix expr
+    fn parse_prefix_expr(&mut self) -> Option<Expr> {
+        let prefix = match self.current_token {
+            Token::Bang => Prefix::Not,
+            Token::Minus => Prefix::Minus,
+            Token::Plus => Prefix::Plus,
+            _ => return None,
+        };
+
+        self.walk_token();
+
+        self.parse_expr(/*Precedence::Prefix*/).map(|expr| Expr::Prefix(prefix, Box::new(expr)))
+    }
+
+    /// infix expr (which means "中缀-表达式")
+    fn parse_infix_expr(&mut self, left: Expr) -> Option<Expr> {
+        let infix = match self.current_token {
+            Token::Plus => Infix::Plus,
+            Token::Minus => Infix::Minus,
+            Token::Slash => Infix::Divide,
+            Token::Asterisk => Infix::Multiply,
+            Token::Equal => Infix::Equal,
+            Token::NotEqual => Infix::NotEqual,
+            Token::LT => Infix::LT,
+            Token::LTEQ => Infix::LTEQ,
+            Token::GT => Infix::GT,
+            Token::GTEQ => Infix::GTEQ,
+            _ => return None,
+        };
+
+        /* let precedence = self.current_token_precedence(); */
+
+        self.walk_token();
+
+        self.parse_expr(/* precedence */).map(|expr| Expr::Infix(infix, Box::new(left), Box::new(expr)))
     }
 
     /// if expr
@@ -436,6 +472,8 @@ mod tests {
     use crate::ast::Ident;
     use crate::ast::Literal;
     use crate::ast::Stmt;
+    use crate::ast::Prefix;
+    use crate::ast::Infix;
 
     use super::Lexer;
     use super::Parser;
@@ -651,12 +689,131 @@ return 993322;
 
     #[test]
     fn test_prefix_expr() {
-        // 1004
+        let tests = vec![
+            (
+                "!5;",
+                Stmt::Expr(Expr::Prefix(
+                    Prefix::Not,
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                )),
+            ),
+            (
+                "-15;",
+                Stmt::Expr(Expr::Prefix(
+                    Prefix::Minus,
+                    Box::new(Expr::Literal(Literal::Int(15))),
+                )),
+            ),
+            (
+                "+15;",
+                Stmt::Expr(Expr::Prefix(
+                    Prefix::Plus,
+                    Box::new(Expr::Literal(Literal::Int(15))),
+                )),
+            ),
+        ];
+
+        for (input, expect) in tests {
+            let mut parser = Parser::new(Lexer::new(input));
+            let program = parser.parse();
+
+            check_parse_errors(&mut parser);
+            assert_eq!(vec![expect], program);
+        }
     }
 
     #[test]
     fn test_infix_expr() {
-        // 1004
+        let tests = vec![
+            (
+                "5 + 5;",
+                Stmt::Expr(Expr::Infix(
+                    Infix::Plus,
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                )),
+            ),
+            (
+                "5 - 5;",
+                Stmt::Expr(Expr::Infix(
+                    Infix::Minus,
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                )),
+            ),
+            (
+                "5 * 5;",
+                Stmt::Expr(Expr::Infix(
+                    Infix::Multiply,
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                )),
+            ),
+            (
+                "5 / 5;",
+                Stmt::Expr(Expr::Infix(
+                    Infix::Divide,
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                )),
+            ),
+            (
+                "5 > 5;",
+                Stmt::Expr(Expr::Infix(
+                    Infix::GT,
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                )),
+            ),
+            (
+                "5 < 5;",
+                Stmt::Expr(Expr::Infix(
+                    Infix::LT,
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                )),
+            ),
+            (
+                "5 == 5;",
+                Stmt::Expr(Expr::Infix(
+                    Infix::Equal,
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                )),
+            ),
+            (
+                "5 != 5;",
+                Stmt::Expr(Expr::Infix(
+                    Infix::NotEqual,
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                )),
+            ),
+            (
+                "5 >= 5;",
+                Stmt::Expr(Expr::Infix(
+                    Infix::GTEQ,
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                )),
+            ),
+            (
+                "5 <= 5;",
+                Stmt::Expr(Expr::Infix(
+                    Infix::LTEQ,
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                    Box::new(Expr::Literal(Literal::Int(5))),
+                )),
+            ),
+        ];
+
+        for (input, expect) in tests {
+            let mut parser = Parser::new(Lexer::new(input));
+            let program = parser.parse();
+
+            check_parse_errors(&mut parser);
+            assert_eq!(vec![expect], program);
+        }
     }
 
     #[test]
