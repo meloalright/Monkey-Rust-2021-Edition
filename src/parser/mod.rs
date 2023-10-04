@@ -818,12 +818,46 @@ return 993322;
 
     #[test]
     fn test_if_expr() {
-        // 1004
+        let input = "if (x < y) { x }";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Expr(Expr::If {
+                cond: Box::new(Expr::Infix(
+                    Infix::LT,
+                    Box::new(Expr::Ident(Ident(String::from("x")))),
+                    Box::new(Expr::Ident(Ident(String::from("y")))),
+                )),
+                consequence: vec![Stmt::Expr(Expr::Ident(Ident(String::from("x"))))],
+                alternative: None,
+            })],
+            program,
+        );
     }
 
     #[test]
     fn test_if_else_expr() {
-        // 1004
+        let input = "if (x < y) { x } else { y }";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Expr(Expr::If {
+                cond: Box::new(Expr::Infix(
+                    Infix::LT,
+                    Box::new(Expr::Ident(Ident(String::from("x")))),
+                    Box::new(Expr::Ident(Ident(String::from("y")))),
+                )),
+                consequence: vec![Stmt::Expr(Expr::Ident(Ident(String::from("x"))))],
+                alternative: Some(vec![Stmt::Expr(Expr::Ident(Ident(String::from("y"))))]),
+            })],
+            program,
+        );
     }
 
     #[test]
