@@ -92,3 +92,20 @@ pub enum Stmt {
 pub type BlockStmt = Vec<Stmt>;
 
 pub type Program = BlockStmt;
+
+
+///
+// Precedence low -> high
+// 优先级从低到高
+///
+#[derive(PartialEq, PartialOrd, Debug, Clone)]
+pub enum Precedence {
+    Lowest,
+    Equals,      // ==
+    LessGreater, // > or <
+    Sum,         // +
+    Product,     // *
+    Prefix,      // -X or !X
+    Call,        // myFunction(x)
+    Index,       // array[index]
+}
