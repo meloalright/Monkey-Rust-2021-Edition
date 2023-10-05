@@ -75,6 +75,14 @@ pub enum Expr {
         consequence: BlockStmt,
         alternative: Option<BlockStmt>,
     },
+    Function {
+        params: Vec<Ident>,
+        body: BlockStmt,
+    },
+    Call {
+        func: Box<Expr>,
+        args: Vec<Expr>,
+    },
 }
 
 #[derive(PartialEq, Clone, Debug)]

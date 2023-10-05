@@ -78,6 +78,10 @@ impl Parser {
         self.next_token == tok
     }
 
+    fn next_token_borrow_is(&mut self, token_borrow: &Token) -> bool {
+        self.next_token == *token_borrow
+    }
+
     pub fn get_errors(&mut self) -> ParseErrors {
         self.errors.clone()
     }
@@ -275,7 +279,7 @@ impl Parser {
             Token::Bang | Token::Minus | Token::Plus => self.parse_prefix_expr(),
             Token::If => self.parse_if_expr(),
             Token::While => self.parse_while_expr(),
-            Token::Function => todo!(),
+            Token::Function => self.parse_function_expr(),
             _ => {
                 // todo!();
                 None
@@ -314,8 +318,7 @@ impl Parser {
                 }
                 Token::LParen => {
                     self.walk_token();
-                    todo!()
-                    // left = self.parse_call_expr(left.unwrap());
+                    left = self.parse_call_expr(left.unwrap());
                 }
                 _ => return left,
             }
@@ -344,6 +347,41 @@ impl Parser {
             Token::Bool(value) => Some(Expr::Literal(Literal::Bool(value))),
             _ => None,
         }
+    }
+
+    /// parse the expr list until get the end token
+    fn parse_expr_list(&mut self, end: Token) -> Option<Vec<Expr>> {
+        let mut list = vec![];
+
+        if self.next_token_borrow_is(&end) {
+            self.walk_token();
+            return Some(list);
+        }
+
+        self.walk_token();
+
+        match self.parse_expr(Precedence::Lowest) {
+            Some(expr) => list.push(expr),
+            None => return None,
+        }
+
+        while self.next_token_is(Token::Comma) {
+            self.walk_token();
+            self.walk_token();
+
+            match self.parse_expr(Precedence::Lowest) {
+                Some(expr) => list.push(expr),
+                None => return None,
+            }
+        }
+
+        if !self.next_token_borrow_is(&end) {
+            return None;
+        }
+
+        self.walk_token();
+
+        Some(list)
     }
 
     /// prefix expr
@@ -473,6 +511,76 @@ impl Parser {
         Some(Expr::While {
             cond: Box::new(cond),
             consequence,
+        })
+    }
+
+    /// function expr
+    fn parse_function_expr(&mut self) -> Option<Expr> {
+        if !self.next_token_is(Token::LParen) {
+            return None;
+        }
+
+        self.walk_token();
+
+        let params = match self.parse_function_args() {
+            Some(params) => params,
+            None => return None,
+        };
+
+        if !self.next_token_is(Token::LBrace) {
+            return None;
+        }
+
+        self.walk_token();
+
+        Some(Expr::Function { params, body: self.parse_block_stmt() })
+    }
+
+    /// function args
+    fn parse_function_args(&mut self) -> Option<Vec<Ident>> {
+        let mut args = vec![];
+
+        if self.next_token_is(Token::RParen) {
+            self.walk_token();
+            return Some(args);
+        }
+
+        self.walk_token();
+
+
+        match self.parse_ident() {
+            Some(ident) => args.push(ident),
+            None => return None,
+        };
+
+        while self.next_token_is(Token::Comma) {
+            self.walk_token();
+            self.walk_token();
+
+            match self.parse_ident() {
+                Some(ident) => args.push(ident),
+                None => return None,
+            };
+        }
+
+        if !self.next_token_is(Token::RParen) {
+            return None;
+        }
+
+        self.walk_token();
+
+        Some(args)
+    }
+
+    fn parse_call_expr(&mut self, func_name: Expr) -> Option<Expr> {
+        let args = match self.parse_expr_list(Token::RParen) {
+            Some(args) => args,
+            None => return None,
+        };
+
+        Some(Expr::Call {
+            func: Box::new(func_name),
+            args,
         })
     }
 }
@@ -726,22 +834,45 @@ return 993322;
     }
 
     #[test]
-    fn test_string_literal_expr() {}
+    fn test_string_literal_expr() {
+        // 1006
+    }
 
     #[test]
-    fn test_boolean_literal_expr() {}
+    fn test_boolean_literal_expr() {
+        let tests = vec![
+            ("true;", Stmt::Expr(Expr::Literal(Literal::Bool(true)))),
+            ("false;", Stmt::Expr(Expr::Literal(Literal::Bool(false)))),
+        ];
+
+        for (input, expect) in tests {
+            let mut parser = Parser::new(Lexer::new(input));
+            let program = parser.parse();
+
+            check_parse_errors(&mut parser);
+            assert_eq!(vec![expect], program);
+        }
+    }
 
     #[test]
-    fn test_array_literal_expr() {}
+    fn test_array_literal_expr() {
+        // 1006
+    }
 
     #[test]
-    fn test_hash_literal_expr() {}
+    fn test_hash_literal_expr() {
+        // 1006
+    }
 
     #[test]
-    fn test_index_expr() {}
+    fn test_index_expr() {
+        // 1006
+    }
 
     #[test]
-    fn test_dot_index_expr() {}
+    fn test_dot_index_expr() {
+        // 1006
+    }
 
     #[test]
     fn test_prefix_expr() {
@@ -916,14 +1047,87 @@ return 993322;
         );
     }
 
-    #[test]
-    fn test_func_expr() {}
 
     #[test]
-    fn test_func_params() {}
+    fn test_function_expr() {
+        let input = "fn(x, y) { x + y; }";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Expr(Expr::Function {
+                params: vec![Ident(String::from("x")), Ident(String::from("y"))],
+                body: vec![Stmt::Expr(Expr::Infix(
+                    Infix::Plus,
+                    Box::new(Expr::Ident(Ident(String::from("x")))),
+                    Box::new(Expr::Ident(Ident(String::from("y")))),
+                ))],
+            })],
+            program,
+        );
+    }
 
     #[test]
-    fn test_call_expr() {}
+    fn test_function_args() {
+        let tests = vec![
+            ("fn() {};", vec![]),
+            ("fn(x) {};", vec![Ident(String::from("x"))]),
+            (
+                "fn(x, y, z) {};",
+                vec![
+                    Ident(String::from("x")),
+                    Ident(String::from("y")),
+                    Ident(String::from("z")),
+                ],
+            ),
+        ];
+
+        for (input, expect) in tests {
+            let mut parser = Parser::new(Lexer::new(input));
+            let program = parser.parse();
+
+            check_parse_errors(&mut parser);
+            assert_eq!(
+                vec![Stmt::Expr(Expr::Function {
+                    params: expect,
+                    body: vec![],
+                })],
+                program,
+            );
+        }
+    }
+
+
+    #[test]
+    fn test_call_expr() {
+        let input = "add(1, 2 * 3, 4 + 5);";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Expr(Expr::Call {
+                func: Box::new(Expr::Ident(Ident(String::from("add")))),
+                args: vec![
+                    Expr::Literal(Literal::Int(1)),
+                    Expr::Infix(
+                        Infix::Multiply,
+                        Box::new(Expr::Literal(Literal::Int(2))),
+                        Box::new(Expr::Literal(Literal::Int(3))),
+                    ),
+                    Expr::Infix(
+                        Infix::Plus,
+                        Box::new(Expr::Literal(Literal::Int(4))),
+                        Box::new(Expr::Literal(Literal::Int(5))),
+                    ),
+                ],
+            })],
+            program,
+        );
+    }
 
     #[test]
     fn test_operator_precedence_parsing() {
@@ -1213,7 +1417,100 @@ return 993322;
                     )),
                 )),
             ),
-            // 1005
+            (
+                "d + add(b * c)",
+                Stmt::Expr(Expr::Infix(
+                    Infix::Plus,
+                    Box::new(Expr::Ident(Ident(String::from("d")))),
+                    Box::new(Expr::Call {
+                        func: Box::new(Expr::Ident(Ident(String::from("add")))),
+                        args: vec![Expr::Infix(
+                            Infix::Multiply,
+                            Box::new(Expr::Ident(Ident(String::from("b")))),
+                            Box::new(Expr::Ident(Ident(String::from("c")))),
+                        )],
+                    }),
+                )),
+            ),
+            (
+                "a + add(b * c) + d",
+                Stmt::Expr(Expr::Infix(
+                    Infix::Plus,
+                    Box::new(Expr::Infix(
+                        Infix::Plus,
+                        Box::new(Expr::Ident(Ident(String::from("a")))),
+                        Box::new(Expr::Call {
+                            func: Box::new(Expr::Ident(Ident(String::from("add")))),
+                            args: vec![Expr::Infix(
+                                Infix::Multiply,
+                                Box::new(Expr::Ident(Ident(String::from("b")))),
+                                Box::new(Expr::Ident(Ident(String::from("c")))),
+                            )],
+                        }),
+                    )),
+                    Box::new(Expr::Ident(Ident(String::from("d")))),
+                )),
+            ),
+            (
+                "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
+                Stmt::Expr(Expr::Call {
+                    func: Box::new(Expr::Ident(Ident(String::from("add")))),
+                    args: vec![
+                        Expr::Ident(Ident(String::from("a"))),
+                        Expr::Ident(Ident(String::from("b"))),
+                        Expr::Literal(Literal::Int(1)),
+                        Expr::Infix(
+                            Infix::Multiply,
+                            Box::new(Expr::Literal(Literal::Int(2))),
+                            Box::new(Expr::Literal(Literal::Int(3))),
+                        ),
+                        Expr::Infix(
+                            Infix::Plus,
+                            Box::new(Expr::Literal(Literal::Int(4))),
+                            Box::new(Expr::Literal(Literal::Int(5))),
+                        ),
+                        Expr::Call {
+                            func: Box::new(Expr::Ident(Ident(String::from("add")))),
+                            args: vec![
+                                Expr::Literal(Literal::Int(6)),
+                                Expr::Infix(
+                                    Infix::Multiply,
+                                    Box::new(Expr::Literal(Literal::Int(7))),
+                                    Box::new(Expr::Literal(Literal::Int(8))),
+                                ),
+                            ],
+                        },
+                    ],
+                }),
+            ),
+            (
+                "add(a + b + c * d / f + g)",
+                Stmt::Expr(Expr::Call {
+                    func: Box::new(Expr::Ident(Ident(String::from("add")))),
+                    args: vec![Expr::Infix(
+                        Infix::Plus,
+                        Box::new(Expr::Infix(
+                            Infix::Plus,
+                            Box::new(Expr::Infix(
+                                Infix::Plus,
+                                Box::new(Expr::Ident(Ident(String::from("a")))),
+                                Box::new(Expr::Ident(Ident(String::from("b")))),
+                            )),
+                            Box::new(Expr::Infix(
+                                Infix::Divide,
+                                Box::new(Expr::Infix(
+                                    Infix::Multiply,
+                                    Box::new(Expr::Ident(Ident(String::from("c")))),
+                                    Box::new(Expr::Ident(Ident(String::from("d")))),
+                                )),
+                                Box::new(Expr::Ident(Ident(String::from("f")))),
+                            )),
+                        )),
+                        Box::new(Expr::Ident(Ident(String::from("g")))),
+                    )],
+                }),
+            ),
+            // 1006
         ];
 
         for (input, expect) in tests {
