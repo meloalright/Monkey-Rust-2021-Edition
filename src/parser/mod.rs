@@ -271,10 +271,10 @@ impl Parser {
         let mut left = match self.current_token {
             Token::Ident(_) => self.parse_ident_expr(),
             Token::Int(_) => self.parse_int_expr(),
-            Token::String(_) => todo!(),
+            Token::String(_) => self.parse_string_expr(),
             Token::Bool(_) => self.parse_bool_expr(),
-            Token::LBracket => todo!(),
-            Token::LBrace => todo!(),
+            Token::LBracket => self.parse_array_expr(),
+            Token::LBrace => self.parse_hash_expr(),
             Token::LParen => self.parse_grouped_expr(),
             Token::Bang | Token::Minus | Token::Plus => self.parse_prefix_expr(),
             Token::If => self.parse_if_expr(),
@@ -308,13 +308,11 @@ impl Parser {
                 }
                 Token::LBracket => {
                     self.walk_token();
-                    todo!()
-                    // left = self.parse_index_expr(left.unwrap());
+                    left = self.parse_index_expr(left.unwrap());
                 }
                 Token::Dot => {
                     self.walk_token();
-                    todo!()
-                    // left = self.parse_dot_index_expr(left.unwrap());
+                    left = self.parse_dot_index_expr(left.unwrap());
                 }
                 Token::LParen => {
                     self.walk_token();
@@ -341,12 +339,69 @@ impl Parser {
         }
     }
 
+    /// string expr
+    fn parse_string_expr(&mut self) -> Option<Expr> {
+        match self.current_token {
+            Token::String(ref mut s) => Some(Expr::Literal(Literal::String(s.clone()))),
+            _ => None,
+        }
+    }
+
     /// boolean expr
     fn parse_bool_expr(&mut self) -> Option<Expr> {
         match self.current_token {
             Token::Bool(value) => Some(Expr::Literal(Literal::Bool(value))),
             _ => None,
         }
+    }
+
+    /// array expr
+    fn parse_array_expr(&mut self) -> Option<Expr> {
+        self.parse_expr_list(Token::RBracket).map(|list| Expr::Literal(Literal::Array(list)))
+    }
+
+    /// hash expr
+    fn parse_hash_expr(&mut self) -> Option<Expr> {
+        let mut pairs = Vec::new();
+
+        while !self.next_token_is(Token::RBrace) {
+            self.walk_token();
+
+            let key = match self.parse_expr(Precedence::Lowest) {
+                Some(expr) => expr,
+                None => return None,
+            };
+
+            if !self.next_token_is(Token::Colon) {
+                self.walk_token();
+                return None;
+            }
+
+            self.walk_token();
+            self.walk_token();
+
+            let value = match self.parse_expr(Precedence::Lowest) {
+                Some(expr) => expr,
+                None => return None,
+            };
+
+            pairs.push((key, value));
+
+            if !self.next_token_is(Token::RBrace) {
+                if !self.next_token_is(Token::Comma) {
+                    self.walk_token();
+                    return None;
+                }
+                self.walk_token();
+            }
+        }
+
+        if !self.next_token_is(Token::RBrace) {
+            self.walk_token();
+            return None;
+        }
+
+        Some(Expr::Literal(Literal::Hash(pairs)))
     }
 
     /// parse the expr list until get the end token
@@ -419,6 +474,39 @@ impl Parser {
         self.walk_token();
 
         self.parse_expr(precedence).map(|right_expr| Expr::Infix(infix, Box::new(left), Box::new(right_expr)))
+    }
+
+    /// index expr
+    fn parse_index_expr(&mut self, left: Expr) -> Option<Expr> {
+        self.walk_token();
+
+        let index = match self.parse_expr(Precedence::Lowest) {
+            Some(expr) => expr,
+            None => return None,
+        };
+
+        if !self.next_token_is(Token::RBracket) {
+            return None;
+        }
+
+        self.walk_token();
+
+        Some(Expr::Index(Box::new(left), Box::new(index)))
+    }
+
+    /// dot index expr
+    fn parse_dot_index_expr(&mut self, left: Expr) -> Option<Expr> {
+        self.walk_token();
+
+        match self.parse_ident() {
+            Some(name) => match name {
+                Ident(str) => {
+                    Some(Expr::Index(Box::new(left), Box::new(Expr::Literal(Literal::String(str)))))
+                },
+                _ => return None
+            },
+            None => return None,
+        }
     }
 
     /// group expr
@@ -835,7 +923,18 @@ return 993322;
 
     #[test]
     fn test_string_literal_expr() {
-        // 1006
+        let input = "\"hello world\";";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Expr(Expr::Literal(Literal::String(String::from(
+                "hello world",
+            ))))],
+            program,
+        );
     }
 
     #[test]
@@ -856,22 +955,135 @@ return 993322;
 
     #[test]
     fn test_array_literal_expr() {
-        // 1006
+        let input = "[1, 2 * 2, 3 + 3]";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Expr(Expr::Literal(Literal::Array(vec![
+                Expr::Literal(Literal::Int(1)),
+                Expr::Infix(
+                    Infix::Multiply,
+                    Box::new(Expr::Literal(Literal::Int(2))),
+                    Box::new(Expr::Literal(Literal::Int(2))),
+                ),
+                Expr::Infix(
+                    Infix::Plus,
+                    Box::new(Expr::Literal(Literal::Int(3))),
+                    Box::new(Expr::Literal(Literal::Int(3))),
+                ),
+            ])))],
+            program,
+        );
     }
 
     #[test]
     fn test_hash_literal_expr() {
-        // 1006
+        let tests = vec![
+            ("{}", Stmt::Expr(Expr::Literal(Literal::Hash(vec![])))),
+            (
+                "{\"one\": 1, \"two\": 2, \"three\": 3}",
+                Stmt::Expr(Expr::Literal(Literal::Hash(vec![
+                    (
+                        Expr::Literal(Literal::String(String::from("one"))),
+                        Expr::Literal(Literal::Int(1)),
+                    ),
+                    (
+                        Expr::Literal(Literal::String(String::from("two"))),
+                        Expr::Literal(Literal::Int(2)),
+                    ),
+                    (
+                        Expr::Literal(Literal::String(String::from("three"))),
+                        Expr::Literal(Literal::Int(3)),
+                    ),
+                ]))),
+            ),
+            (
+                "{\"one\": 0 + 1, \"two\": 10 - 8, \"three\": 15 / 5}",
+                Stmt::Expr(Expr::Literal(Literal::Hash(vec![
+                    (
+                        Expr::Literal(Literal::String(String::from("one"))),
+                        Expr::Infix(
+                            Infix::Plus,
+                            Box::new(Expr::Literal(Literal::Int(0))),
+                            Box::new(Expr::Literal(Literal::Int(1))),
+                        ),
+                    ),
+                    (
+                        Expr::Literal(Literal::String(String::from("two"))),
+                        Expr::Infix(
+                            Infix::Minus,
+                            Box::new(Expr::Literal(Literal::Int(10))),
+                            Box::new(Expr::Literal(Literal::Int(8))),
+                        ),
+                    ),
+                    (
+                        Expr::Literal(Literal::String(String::from("three"))),
+                        Expr::Infix(
+                            Infix::Divide,
+                            Box::new(Expr::Literal(Literal::Int(15))),
+                            Box::new(Expr::Literal(Literal::Int(5))),
+                        ),
+                    ),
+                ]))),
+            ),
+            (
+                "{key: \"value\"}",
+                Stmt::Expr(Expr::Literal(Literal::Hash(vec![(
+                    Expr::Ident(Ident(String::from("key"))),
+                    Expr::Literal(Literal::String(String::from("value"))),
+                )]))),
+            ),
+        ];
+
+        for (input, expect) in tests {
+            let mut parser = Parser::new(Lexer::new(input));
+            let program = parser.parse();
+
+            check_parse_errors(&mut parser);
+            assert_eq!(vec![expect], program);
+        }
     }
+
 
     #[test]
     fn test_index_expr() {
-        // 1006
+        let input = "myArray[1 + 1]";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Expr(Expr::Index(
+                Box::new(Expr::Ident(Ident(String::from("myArray")))),
+                Box::new(Expr::Infix(
+                    Infix::Plus,
+                    Box::new(Expr::Literal(Literal::Int(1))),
+                    Box::new(Expr::Literal(Literal::Int(1))),
+                )),
+            ))],
+            program
+        );
     }
 
     #[test]
     fn test_dot_index_expr() {
-        // 1006
+        let input = "myHash.key";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Expr(Expr::Index(
+                Box::new(Expr::Ident(Ident(String::from("myHash")))),
+                Box::new(Expr::Literal(Literal::String(String::from("key")))),
+            ))],
+            program
+        );
     }
 
     #[test]
@@ -1510,7 +1722,61 @@ return 993322;
                     )],
                 }),
             ),
-            // 1006
+            (
+                "a * [1, 2, 3, 4][b * c] * d",
+                Stmt::Expr(Expr::Infix(
+                    Infix::Multiply,
+                    Box::new(Expr::Infix(
+                        Infix::Multiply,
+                        Box::new(Expr::Ident(Ident(String::from("a")))),
+                        Box::new(Expr::Index(
+                            Box::new(Expr::Literal(Literal::Array(vec![
+                                Expr::Literal(Literal::Int(1)),
+                                Expr::Literal(Literal::Int(2)),
+                                Expr::Literal(Literal::Int(3)),
+                                Expr::Literal(Literal::Int(4)),
+                            ]))),
+                            Box::new(Expr::Infix(
+                                Infix::Multiply,
+                                Box::new(Expr::Ident(Ident(String::from("b")))),
+                                Box::new(Expr::Ident(Ident(String::from("c")))),
+                            )),
+                        )),
+                    )),
+                    Box::new(Expr::Ident(Ident(String::from("d")))),
+                )),
+            ),
+            (
+                "add(a * b[2], b[1], 2 * [1, 2][1])",
+                Stmt::Expr(Expr::Call {
+                    func: Box::new(Expr::Ident(Ident(String::from("add")))),
+                    args: vec![
+                        Expr::Infix(
+                            Infix::Multiply,
+                            Box::new(Expr::Ident(Ident(String::from("a")))),
+                            Box::new(Expr::Index(
+                                Box::new(Expr::Ident(Ident(String::from("b")))),
+                                Box::new(Expr::Literal(Literal::Int(2))),
+                            )),
+                        ),
+                        Expr::Index(
+                            Box::new(Expr::Ident(Ident(String::from("b")))),
+                            Box::new(Expr::Literal(Literal::Int(1))),
+                        ),
+                        Expr::Infix(
+                            Infix::Multiply,
+                            Box::new(Expr::Literal(Literal::Int(2))),
+                            Box::new(Expr::Index(
+                                Box::new(Expr::Literal(Literal::Array(vec![
+                                    Expr::Literal(Literal::Int(1)),
+                                    Expr::Literal(Literal::Int(2)),
+                                ]))),
+                                Box::new(Expr::Literal(Literal::Int(1))),
+                            )),
+                        ),
+                    ],
+                }),
+            ),
         ];
 
         for (input, expect) in tests {

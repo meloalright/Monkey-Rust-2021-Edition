@@ -7,6 +7,8 @@ pub enum Literal {
     Int(i64),
     String(String),
     Bool(bool),
+    Array(Vec<Expr>),
+    Hash(Vec<(Expr, Expr)>),
 }
 
 /// prefix
@@ -66,6 +68,7 @@ pub enum Expr {
     Ident(Ident),
     Prefix(Prefix, Box<Expr>),
     Infix(Infix, Box<Expr>, Box<Expr>),
+    Index(Box<Expr>, Box<Expr>),
     While {
         cond: Box<Expr>,
         consequence: BlockStmt,
