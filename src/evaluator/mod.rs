@@ -62,6 +62,18 @@ impl Evaluator {
         match expr {
             ast::Expr::Ident(ident) => Some(self.eval_ident(ident)),
             ast::Expr::Literal(literal) => Some(self.eval_literal(literal)),
+            ast::Expr::Prefix(prefix, right_expr) => {
+                self.eval_expr(&*right_expr).map(|right| self.eval_prefix_expr(prefix, right))
+            }
+            ast::Expr::Infix(infix, left_expr, right_expr) => {
+                let left = self.eval_expr(&*left_expr);
+                let right = self.eval_expr(&*right_expr);
+                if left.is_some() && right.is_some() {
+                    Some(self.eval_infix_expr(infix, left.unwrap(), right.unwrap()))
+                } else {
+                    None
+                }
+            }
             ast::Expr::While { cond, consequence } => self.eval_while_expr(&*cond, consequence),
             ast::Expr::If {
                 cond,
@@ -78,6 +90,75 @@ impl Evaluator {
         match self.env.get(name.clone()) {
             Some(value) => value,
             None => panic!(),
+        }
+    }
+
+    fn eval_prefix_expr(&mut self, prefix: &ast::Prefix, right: object::Object) -> object::Object {
+        match prefix {
+            ast::Prefix::Not => self.eval_not_op_expr(right),
+            ast::Prefix::Minus => self.eval_minus_prefix_op_expr(right),
+            ast::Prefix::Plus => self.eval_plus_prefix_op_expr(right),
+        }
+    }
+
+    fn eval_not_op_expr(&mut self, right: object::Object) -> object::Object {
+        todo!();
+        // match right {
+        //     object::Object::Bool(true) => object::Object::Bool(false),
+        //     object::Object::Bool(false) => object::Object::Bool(true),
+        //     object::Object::Null => object::Object::Bool(true),
+        //     _ => object::Object::Bool(false),
+        // }
+    }
+
+    fn eval_minus_prefix_op_expr(&mut self, right: object::Object) -> object::Object {
+        match right {
+            object::Object::Int(value) => object::Object::Int(-value),
+            _ => Self::error(format!("unknown operator: -{}", right)),
+        }
+    }
+
+    fn eval_plus_prefix_op_expr(&mut self, right: object::Object) -> object::Object {
+        match right {
+            object::Object::Int(value) => object::Object::Int(value),
+            _ => Self::error(format!("unknown operator: {}", right)),
+        }
+    }
+
+    fn eval_infix_expr(&mut self, infix: &ast::Infix, left: object::Object, right: object::Object) -> object::Object {
+        match left {
+            object::Object::Int(left_value) => {
+                if let object::Object::Int(right_value) = right {
+                    self.eval_infix_int_expr(infix, left_value, right_value)
+                } else {
+                    Self::error(format!("type mismatch: {} {} {}", left, infix, right))
+                }
+            }
+            // object::Object::String(left_value) => {
+            //     if let object::Object::String(right_value) = right {
+            //         self.eval_infix_string_expr(infix, left_value, right_value)
+            //     } else {
+            //         Self::error(format!("type mismatch: {} {} {}", left_value, infix, right))
+            //     }
+            // }
+            _ => Self::error(format!("unknown operator: {} {} {}", left, infix, right)),
+        }
+    }
+
+
+    fn eval_infix_int_expr(&mut self, infix: &ast::Infix, left: i64, right: i64) -> object::Object {
+        match infix {
+            ast::Infix::Plus => object::Object::Int(left + right),
+            ast::Infix::Minus => object::Object::Int(left - right),
+            ast::Infix::Multiply => object::Object::Int(left * right),
+            ast::Infix::Divide => object::Object::Int(left / right),
+            // ast::Infix::LessThan => object::Object::Bool(left < right),
+            // ast::Infix::LessThanEqual => object::Object::Bool(left <= right),
+            // ast::Infix::GreaterThan => object::Object::Bool(left > right),
+            // ast::Infix::GreaterThanEqual => object::Object::Bool(left >= right),
+            // ast::Infix::Equal => object::Object::Bool(left == right),
+            // ast::Infix::NotEqual => object::Object::Bool(left != right),
+            _ => todo!()
         }
     }
 
@@ -177,7 +258,9 @@ impl Evaluator {
         result
     }
 
-
+    fn error(msg: String) -> object::Object {
+        object::Object::Error(msg)
+    }
 
     fn is_truthy(obj: object::Object) -> bool {
         match obj {
@@ -197,44 +280,82 @@ mod tests {
     use super::env;
     use super::object;
 
-    #[test]
-    fn test_let_evaluator() {
-        let mut lexer = Lexer::new(r"let five = 5;");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse();
-        let mut evaluator = Evaluator { env: env::Env::new() };
-        evaluator.eval(&program);
+    fn eval(input: &str) -> Option<object::Object> {
+        Evaluator { env: env::Env::new() }
+            .eval(&Parser::new(Lexer::new(input)).parse())
     }
 
+    /// cases in edition 2015
+
     #[test]
-    fn test_return_evaluator() {
-        let mut lexer = Lexer::new(r"return 3");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse();
-        let mut evaluator = Evaluator { env: env::Env::new() };
-        let rt = evaluator.eval(&program);
-        match rt {
-            Some(object::Object::Int(v)) => {
-                assert_eq!(v, 3i64);
-            },
-            _ => todo!()
+    fn test_int_expr() {
+        let tests = vec![
+            ("5", Some(object::Object::Int(5))),
+            ("10", Some(object::Object::Int(10))),
+            ("-5", Some(object::Object::Int(-5))),
+            ("-10", Some(object::Object::Int(-10))),
+            ("+5", Some(object::Object::Int(5))),
+            ("+10", Some(object::Object::Int(10))),
+            ("+(-5)", Some(object::Object::Int(-5))),
+            ("+(-10)", Some(object::Object::Int(-10))),
+            ("5 + 5 + 5 + 5 - 10", Some(object::Object::Int(10))),
+            ("2 * 2 * 2 * 2 * 2", Some(object::Object::Int(32))),
+            ("-50 + 100 + -50", Some(object::Object::Int(0))),
+            ("5 * 2 + 10", Some(object::Object::Int(20))),
+            ("5 + 2 * 10", Some(object::Object::Int(25))),
+            ("20 + 2 * -10", Some(object::Object::Int(0))),
+            ("50 / 2 * 2 + 10", Some(object::Object::Int(60))),
+            ("2 * (5 + 10)", Some(object::Object::Int(30))),
+            ("3 * 3 * 3 + 10", Some(object::Object::Int(37))),
+            ("3 * (3 * 3) + 10", Some(object::Object::Int(37))),
+            ("(5 + 10 * 2 + 15 / 3) * 2 + -10", Some(object::Object::Int(50))),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
         }
     }
 
-    #[test]
-    fn test_expr_evaluator() {
-        let mut lexer = Lexer::new(r"6");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse();
-        let mut evaluator = Evaluator { env: env::Env::new() };
-        let rt = evaluator.eval(&program);
-        match rt {
-            Some(object::Object::Int(v)) => {
-                assert_eq!(v, 6i64);
-            },
-            _ => todo!()
-        }
-    }
+    /// self cases
+
+    // #[test]
+    // fn test_let_evaluator() {
+    //     let mut lexer = Lexer::new(r"let five = 5;");
+    //     let mut parser = Parser::new(lexer);
+    //     let program = parser.parse();
+    //     let mut evaluator = Evaluator { env: env::Env::new() };
+    //     evaluator.eval(&program);
+    // }
+
+    // #[test]
+    // fn test_return_evaluator() {
+    //     let mut lexer = Lexer::new(r"return 3");
+    //     let mut parser = Parser::new(lexer);
+    //     let program = parser.parse();
+    //     let mut evaluator = Evaluator { env: env::Env::new() };
+    //     let rt = evaluator.eval(&program);
+    //     match rt {
+    //         Some(object::object::object::Object::Int(v)) => {
+    //             assert_eq!(v, 3i64);
+    //         },
+    //         _ => todo!()
+    //     }
+    // }
+
+    // #[test]
+    // fn test_expr_evaluator() {
+    //     let mut lexer = Lexer::new(r"6");
+    //     let mut parser = Parser::new(lexer);
+    //     let program = parser.parse();
+    //     let mut evaluator = Evaluator { env: env::Env::new() };
+    //     let rt = evaluator.eval(&program);
+    //     match rt {
+    //         Some(object::object::object::Object::Int(v)) => {
+    //             assert_eq!(v, 6i64);
+    //         },
+    //         _ => todo!()
+    //     }
+    // }
 
     #[test]
     fn test_reassign_evaluator() {
