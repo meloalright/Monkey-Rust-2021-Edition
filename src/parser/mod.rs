@@ -48,23 +48,12 @@ impl Parser {
 
         program
     }
+}
 
-    fn parse_block_stmt(&mut self) -> BlockStmt {
-        self.walk_token();
-
-        let mut block: Vec<Stmt> = vec![];
-
-        while !self.current_token_is(Token::RBrace) {
-            match self.parse_stmt() {
-                Some(stmt) => block.push(stmt),
-                None => {}
-            }
-            self.walk_token();
-        }
-
-        block
-    }
-
+///
+// Walk Token and Assert Implement
+///
+impl Parser {
     fn walk_token(&mut self) {
         self.current_token = self.next_token.clone();
         self.next_token = self.lexer.next_token();
@@ -82,13 +71,29 @@ impl Parser {
         self.next_token == *token_borrow
     }
 
+    fn assert_next_token(&mut self, tok: Token) -> bool {
+        if self.next_token == tok {
+            true
+        } else {
+            self.error_next_token(tok);
+            false
+        }
+    }
+
+    fn error_next_token(&mut self, tok: Token) {
+        self.errors.push(ParseError::UnexpectedToken {
+            want: Some(tok),
+            got: self.next_token.clone(),
+        });
+    }
+
     pub fn get_errors(&mut self) -> ParseErrors {
         self.errors.clone()
     }
 }
 
 ///
-// Stmt Parsing Implement
+// Stmt Assign Implement
 ///
 impl Parser {
     /// The entry of parse stmt
@@ -108,6 +113,26 @@ impl Parser {
         }
     }
 
+    fn parse_block_stmt(&mut self) -> BlockStmt {
+        self.walk_token();
+
+        let mut block: Vec<Stmt> = vec![];
+
+        while !self.current_token_is(Token::RBrace) {
+            if self.current_token_is(Token::Eof) {
+                self.error_next_token(Token::RBrace);
+                return block;
+            }
+            match self.parse_stmt() {
+                Some(stmt) => block.push(stmt),
+                None => {}
+            }
+            self.walk_token();
+        }
+
+        block
+    }
+
     /// let
     fn parse_let_stmt(&mut self) -> Option<Stmt> {
         match &self.next_token {
@@ -120,22 +145,16 @@ impl Parser {
             None => return None,
         };
 
-        self.walk_token();
-
-        if self.current_token != Token::Assign {
+        if !self.assert_next_token(Token::Assign) {
             return None;
         }
 
         self.walk_token();
+        self.walk_token();
 
-        let expr = match self.current_token /* ? */ {
-            Token::Int(i) => {
-                if self.next_token == Token::Semicolon {
-                    self.walk_token();
-                }
-                Expr::Literal(Literal::Int(i))
-            },
-            _ => unreachable!()
+        let expr = match self.parse_expr(Precedence::Lowest) {
+            Some(expr) => expr,
+            None => return None,
         };
 
         if self.next_token_is(Token::Semicolon) {
@@ -157,22 +176,16 @@ impl Parser {
             None => return None,
         };
 
-        self.walk_token();
-
-        if self.current_token != Token::Assign {
+        if !self.assert_next_token(Token::Assign) {
             return None;
         }
 
         self.walk_token();
+        self.walk_token();
 
-        let expr = match self.current_token /* ? */ {
-            Token::Int(i) => {
-                if self.next_token == Token::Semicolon {
-                    self.walk_token();
-                }
-                Expr::Literal(Literal::Int(i))
-            },
-            _ => unreachable!()
+        let expr = match self.parse_expr(Precedence::Lowest) {
+            Some(expr) => expr,
+            None => return None,
         };
 
         if self.next_token_is(Token::Semicolon) {
@@ -180,6 +193,114 @@ impl Parser {
         }
 
         Some(Stmt::Const(name, expr))
+    }
+
+    /// reassign
+    fn parse_reassign_stmt(&mut self) -> Option<Stmt> {
+        let name = match self.parse_ident() {
+            Some(name) => name,
+            None => return None,
+        };
+
+        if !self.assert_next_token(Token::Assign) {
+            return None;
+        }
+
+        self.walk_token();
+        self.walk_token();
+
+        let expr = match self.parse_expr(Precedence::Lowest) {
+            Some(expr) => expr,
+            None => return None,
+        };
+
+        if self.next_token_is(Token::Semicolon) {
+            self.walk_token();
+        }
+
+        Some(Stmt::ReAssign(name, expr))
+    }
+}
+
+///
+// Condition Parsing Implement
+///
+impl Parser {
+    /// if expr
+    fn parse_if_expr(&mut self) -> Option<Expr> {
+        if !self.assert_next_token(Token::LParen) {
+            return None;
+        }
+
+        self.walk_token();
+        self.walk_token();
+
+        let cond = match self.parse_expr(Precedence::Lowest) {
+            Some(expr) => expr,
+            None => return None,
+        };
+
+        if !self.assert_next_token(Token::RParen) {
+            return None;
+        }
+        self.walk_token();
+
+        if !self.assert_next_token(Token::LBrace) {
+            return None;
+        }
+        self.walk_token();
+
+        let consequence = self.parse_block_stmt();
+
+        let mut alternative = None;
+
+        if self.next_token_is(Token::Else) {
+            self.walk_token();
+            if !self.assert_next_token(Token::LBrace) {
+                return None;
+            }
+            self.walk_token();
+
+            alternative = Some(self.parse_block_stmt());
+        }
+
+        Some(Expr::If {
+            cond: Box::new(cond),
+            consequence,
+            alternative,
+        })
+    }
+
+    /// while expr
+    fn parse_while_expr(&mut self) -> Option<Expr> {
+        if !self.assert_next_token(Token::LParen) {
+            return None;
+        }
+
+        self.walk_token();
+        self.walk_token();
+
+        let cond = match self.parse_expr(Precedence::Lowest) {
+            Some(expr) => expr,
+            None => return None,
+        };
+
+        if !self.assert_next_token(Token::RParen) {
+            return None;
+        }
+        self.walk_token();
+
+        if !self.assert_next_token(Token::LBrace) {
+            return None;
+        }
+        self.walk_token();
+
+        let consequence = self.parse_block_stmt();
+
+        Some(Expr::While {
+            cond: Box::new(cond),
+            consequence,
+        })
     }
 
     /// break
@@ -219,7 +340,12 @@ impl Parser {
 
         Some(Stmt::Return(expr))
     }
+}
 
+///
+// Expr Parsing Implement
+///
+impl Parser {
     /// expr
     fn parse_expr_stmt(&mut self) -> Option<Stmt> {
         let expr = match self.parse_expr(Precedence::Lowest) {
@@ -234,38 +360,6 @@ impl Parser {
         Some(Stmt::Expr(expr))
     }
 
-    /// reassign
-    fn parse_reassign_stmt(&mut self) -> Option<Stmt> {
-        let name = match self.parse_ident() {
-            Some(name) => name,
-            None => return None,
-        };
-
-        if !self.next_token_is(Token::Assign) {
-            return None;
-        } else {
-            self.walk_token();
-        }
-
-        self.walk_token();
-
-        let expr = match self.parse_expr(Precedence::Lowest) {
-            Some(expr) => expr,
-            None => return None,
-        };
-
-        if self.next_token_is(Token::Semicolon) {
-            self.walk_token();
-        }
-
-        Some(Stmt::ReAssign(name, expr))
-    }
-}
-
-///
-// Expr Parsing Implement
-///
-impl Parser {
     /// parse expr ...
     fn parse_expr(&mut self, precedence: Precedence) -> Option<Expr> {
         let mut left = match self.current_token {
@@ -373,8 +467,7 @@ impl Parser {
                 None => return None,
             };
 
-            if !self.next_token_is(Token::Colon) {
-                self.walk_token();
+            if !self.assert_next_token(Token::Colon) {
                 return None;
             }
 
@@ -389,16 +482,14 @@ impl Parser {
             pairs.push((key, value));
 
             if !self.next_token_is(Token::RBrace) {
-                if !self.next_token_is(Token::Comma) {
-                    self.walk_token();
+                if !self.assert_next_token(Token::Comma) {
                     return None;
                 }
                 self.walk_token();
             }
         }
 
-        if !self.next_token_is(Token::RBrace) {
-            self.walk_token();
+        if !self.assert_next_token(Token::RBrace) {
             return None;
         }
 
@@ -424,6 +515,10 @@ impl Parser {
         while self.next_token_is(Token::Comma) {
             self.walk_token();
             self.walk_token();
+            if self.current_token_is(Token::Eof) {
+                self.error_next_token(Token::Ident(String::from("ident")));
+                return None;
+            }
 
             match self.parse_expr(Precedence::Lowest) {
                 Some(expr) => list.push(expr),
@@ -431,7 +526,7 @@ impl Parser {
             }
         }
 
-        if !self.next_token_borrow_is(&end) {
+        if !self.assert_next_token(end) {
             return None;
         }
 
@@ -488,7 +583,7 @@ impl Parser {
             None => return None,
         };
 
-        if !self.next_token_is(Token::RBracket) {
+        if !self.assert_next_token(Token::RBracket) {
             return None;
         }
 
@@ -519,96 +614,22 @@ impl Parser {
 
         let expr = self.parse_expr(Precedence::Lowest);
 
-        if !self.next_token_is(Token::RParen) {
-            self.walk_token();
+        if !self.assert_next_token(Token::RParen) {
             None
         } else {
             self.walk_token();
             expr
         }
     }
+}
 
-    /// if expr
-    fn parse_if_expr(&mut self) -> Option<Expr> {
-        if !self.next_token_is(Token::LParen) {
-            return None;
-        }
-
-        self.walk_token();
-        self.walk_token();
-
-        let cond = match self.parse_expr(Precedence::Lowest) {
-            Some(expr) => expr,
-            None => return None,
-        };
-
-        if !self.next_token_is(Token::RParen) {
-            return None;
-        }
-        self.walk_token();
-
-        if !self.next_token_is(Token::LBrace) {
-            return None;
-        }
-        self.walk_token();
-
-        let consequence = self.parse_block_stmt();
-
-        let mut alternative = None;
-
-        if self.next_token_is(Token::Else) {
-            self.walk_token();
-            if !self.next_token_is(Token::LBrace) {
-                self.walk_token();
-                return None;
-            }
-            self.walk_token();
-
-            alternative = Some(self.parse_block_stmt());
-        }
-
-        Some(Expr::If {
-            cond: Box::new(cond),
-            consequence,
-            alternative,
-        })
-    }
-
-    /// while expr
-    fn parse_while_expr(&mut self) -> Option<Expr> {
-        if !self.next_token_is(Token::LParen) {
-            return None;
-        }
-
-        self.walk_token();
-        self.walk_token();
-
-        let cond = match self.parse_expr(Precedence::Lowest) {
-            Some(expr) => expr,
-            None => return None,
-        };
-
-        if !self.next_token_is(Token::RParen) {
-            return None;
-        }
-        self.walk_token();
-
-        if !self.next_token_is(Token::LBrace) {
-            return None;
-        }
-        self.walk_token();
-
-        let consequence = self.parse_block_stmt();
-
-        Some(Expr::While {
-            cond: Box::new(cond),
-            consequence,
-        })
-    }
-
+///
+// Function Parsing Implement
+///
+impl Parser {
     /// function expr
     fn parse_function_expr(&mut self) -> Option<Expr> {
-        if !self.next_token_is(Token::LParen) {
+        if !self.assert_next_token(Token::LParen) {
             return None;
         }
 
@@ -619,7 +640,7 @@ impl Parser {
             None => return None,
         };
 
-        if !self.next_token_is(Token::LBrace) {
+        if !self.assert_next_token(Token::LBrace) {
             return None;
         }
 
@@ -657,7 +678,7 @@ impl Parser {
             };
         }
 
-        if !self.next_token_is(Token::RParen) {
+        if !self.assert_next_token(Token::RParen) {
             return None;
         }
 
@@ -1859,4 +1880,82 @@ return 993322;
         );
     }
 
+    /// errors panic
+
+    #[test]
+    #[should_panic]
+    fn test_let_panic() {
+        let input = "let a = 3; let b ! 4;";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_if_panic() {
+        let input = "if a { q }";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_else_panic() {
+        let input = "if (a) { q } else";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_while_panic() {
+        let input = "while (a) { c = 1";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_array_panic() {
+        let input = "let list = [3,4,5,";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_hash_panic() {
+        let input = "let hash = { \"c\": 3, \"d\" };";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_function_panic() {
+        let input = "add(3, 4, 5";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+    }
 }
