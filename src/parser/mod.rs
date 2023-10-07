@@ -357,7 +357,8 @@ impl Parser {
 
     /// array expr
     fn parse_array_expr(&mut self) -> Option<Expr> {
-        self.parse_expr_list(Token::RBracket).map(|list| Expr::Literal(Literal::Array(list)))
+        self.parse_expr_list(Token::RBracket)
+            .map(|list| Expr::Literal(Literal::Array(list)))
     }
 
     /// hash expr
@@ -450,7 +451,8 @@ impl Parser {
 
         self.walk_token();
 
-        self.parse_expr(Precedence::Prefix).map(|expr| Expr::Prefix(prefix, Box::new(expr)))
+        self.parse_expr(Precedence::Prefix)
+            .map(|expr| Expr::Prefix(prefix, Box::new(expr)))
     }
 
     /// infix expr (which means "中缀-表达式")
@@ -473,7 +475,8 @@ impl Parser {
 
         self.walk_token();
 
-        self.parse_expr(precedence).map(|right_expr| Expr::Infix(infix, Box::new(left), Box::new(right_expr)))
+        self.parse_expr(precedence)
+            .map(|right_expr| Expr::Infix(infix, Box::new(left), Box::new(right_expr)))
     }
 
     /// index expr
@@ -500,10 +503,11 @@ impl Parser {
 
         match self.parse_ident() {
             Some(name) => match name {
-                Ident(str) => {
-                    Some(Expr::Index(Box::new(left), Box::new(Expr::Literal(Literal::String(str)))))
-                },
-                _ => return None
+                Ident(str) => Some(Expr::Index(
+                    Box::new(left),
+                    Box::new(Expr::Literal(Literal::String(str))),
+                )),
+                _ => return None,
             },
             None => return None,
         }
@@ -621,7 +625,10 @@ impl Parser {
 
         self.walk_token();
 
-        Some(Expr::Function { params, body: self.parse_block_stmt() })
+        Some(Expr::Function {
+            params,
+            body: self.parse_block_stmt(),
+        })
     }
 
     /// function args
@@ -634,7 +641,6 @@ impl Parser {
         }
 
         self.walk_token();
-
 
         match self.parse_ident() {
             Some(ident) => args.push(ident),
@@ -677,7 +683,6 @@ impl Parser {
 // Precedence Parsing Implement (which means "运算优先级")
 ///
 impl Parser {
-
     fn token_to_precedence(tok: &Token) -> Precedence {
         match tok {
             Token::Equal | Token::NotEqual => Precedence::Equals,
@@ -722,10 +727,10 @@ impl Parser {
 mod tests {
     use crate::ast::Expr;
     use crate::ast::Ident;
-    use crate::ast::Literal;
-    use crate::ast::Stmt;
-    use crate::ast::Prefix;
     use crate::ast::Infix;
+    use crate::ast::Literal;
+    use crate::ast::Prefix;
+    use crate::ast::Stmt;
 
     use super::Lexer;
     use super::Parser;
@@ -1047,7 +1052,6 @@ return 993322;
         }
     }
 
-
     #[test]
     fn test_index_expr() {
         let input = "myArray[1 + 1]";
@@ -1259,7 +1263,6 @@ return 993322;
         );
     }
 
-
     #[test]
     fn test_function_expr() {
         let input = "fn(x, y) { x + y; }";
@@ -1310,7 +1313,6 @@ return 993322;
             );
         }
     }
-
 
     #[test]
     fn test_call_expr() {
@@ -1789,286 +1791,72 @@ return 993322;
     }
 
     // self cases
-    // self cases
 
-    // #[test]
-    // fn test_parser_let_stmt() {
-    //     let mut lexer = Lexer::new(r"let five = 5;");
-    //     let mut parser = Parser::new(lexer);
-    //     let program = parser.parse();
-    //     assert_eq!(program.len(), 1);
-    //     match program.get(0) {
-    //         Some(stmt) => match stmt {
-    //             Stmt::Let(ident, expr) => {
-    //                 assert_eq!(ident.0, "five");
-    //                 match expr {
-    //                     Expr::Literal(ltr) => match ltr {
-    //                         Literal::Int(i) => {
-    //                             assert_eq!(*i, 5i64)
-    //                         }
-    //                         _ => todo!(),
-    //                     },
-    //                     _ => todo!(),
-    //                 }
-    //             }
-    //             _ => todo!(),
-    //         },
-    //         _ => todo!(),
-    //     }
-    // }
+    #[test]
+    fn test_while_expr() {
+        let input = "while (x < y) { b = b + 10; }";
 
-    // #[test]
-    // fn test_parser_return_stmt() {
-    //     let mut lexer = Lexer::new(r"return a");
-    //     let mut parser = Parser::new(lexer);
-    //     let program = parser.parse();
-    //     assert_eq!(program.len(), 1);
-    //     match program.get(0) {
-    //         Some(stmt) => match stmt {
-    //             Stmt::Return(expr) => match expr {
-    //                 Expr::Ident(ltr) => {
-    //                     assert_eq!(ltr.0, "a")
-    //                 }
-    //                 _ => todo!(),
-    //             },
-    //             _ => todo!(),
-    //         },
-    //         _ => todo!(),
-    //     }
-    // }
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
 
-    // #[test]
-    // fn test_parser_expr_stmt() {
-    //     let mut lexer = Lexer::new(r"i");
-    //     let mut parser = Parser::new(lexer);
-    //     let program = parser.parse();
-    //     assert_eq!(program.len(), 1);
-    //     match program.get(0) {
-    //         Some(stmt) => match stmt {
-    //             Stmt::Expr(expr) => match expr {
-    //                 Expr::Ident(ltr) => {
-    //                     assert_eq!(ltr.0, "i")
-    //                 }
-    //                 _ => todo!(),
-    //             },
-    //             _ => todo!(),
-    //         },
-    //         _ => todo!(),
-    //     }
-    // }
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Expr(Expr::While {
+                cond: Box::new(Expr::Infix(
+                    Infix::LT,
+                    Box::new(Expr::Ident(Ident(String::from("x")))),
+                    Box::new(Expr::Ident(Ident(String::from("y")))),
+                )),
+                consequence: vec![Stmt::ReAssign(
+                    Ident(String::from("b")),
+                    Expr::Infix(
+                        Infix::Plus,
+                        Box::new(Expr::Ident(Ident(String::from("b")))),
+                        Box::new(Expr::Literal(Literal::Int(10)))
+                    )
+                ),],
+            })],
+            program,
+        );
+    }
 
-    // #[test]
-    // fn test_parser_reassign_stmt() {
-    //     let mut lexer = Lexer::new(r"i = 3");
-    //     let mut parser = Parser::new(lexer);
-    //     let program = parser.parse();
-    //     assert_eq!(program.len(), 1);
-    //     match program.get(0) {
-    //         Some(stmt) => match stmt {
-    //             Stmt::ReAssign(name, expr) => {
-    //                 assert_eq!(name.0, "i");
-    //                 match expr {
-    //                     Expr::Literal(ltr) => match ltr {
-    //                         Literal::Int(i) => {
-    //                             assert_eq!(*i, 3i64)
-    //                         }
-    //                         _ => todo!(),
-    //                     },
-    //                     _ => todo!(),
-    //                 }
-    //             }
-    //             _ => todo!(),
-    //         },
-    //         _ => todo!(),
-    //     }
-    // }
+    #[test]
+    fn test_while_break_continue_expr() {
+        let input = "while (x < y) { b = b + 10; if (b == 30) { break; } else { continue; } }";
 
-    // #[test]
-    // fn test_parser_while_stmt() {
-    //     let mut lexer = Lexer::new(r"while (w) { q = 5 }");
-    //     let mut parser = Parser::new(lexer);
-    //     let program = parser.parse();
-    //     println!("{:?}", program);
-    //     assert_eq!(program.len(), 1);
-    //     match program.get(0) {
-    //         Some(stmt) => match stmt {
-    //             Stmt::Expr(expr) => match expr {
-    //                 Expr::While { cond, consequence } => {
-    //                     match *cond.clone() {
-    //                         Expr::Ident(ident) => {
-    //                             assert_eq!(ident.0, "w")
-    //                         }
-    //                         _ => todo!(),
-    //                     }
-    //                     assert_eq!(consequence.len(), 1);
-    //                     match consequence.get(0) {
-    //                         Some(stmt) => match stmt {
-    //                             Stmt::ReAssign(ident, expr) => {
-    //                                 assert_eq!(ident.0, "q");
-    //                                 match expr {
-    //                                     Expr::Literal(ltr) => match ltr {
-    //                                         Literal::Int(i) => {
-    //                                             assert_eq!(*i, 5i64)
-    //                                         }
-    //                                         _ => todo!(),
-    //                                     },
-    //                                     _ => todo!(),
-    //                                 }
-    //                             }
-    //                             _ => todo!(),
-    //                         },
-    //                         _ => todo!(),
-    //                     }
-    //                 }
-    //                 _ => todo!(),
-    //             },
-    //             _ => todo!(),
-    //         },
-    //         _ => todo!(),
-    //     }
-    // }
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
 
-    // #[test]
-    // fn test_parser_break_stmt() {
-    //     let mut lexer = Lexer::new(r"while (w) { break; }");
-    //     let mut parser = Parser::new(lexer);
-    //     let program = parser.parse();
-    //     println!("{:?}", program);
-    //     assert_eq!(program.len(), 1);
-    //     match program.get(0) {
-    //         Some(stmt) => match stmt {
-    //             Stmt::Expr(expr) => match expr {
-    //                 Expr::While { cond, consequence } => {
-    //                     match *cond.clone() {
-    //                         Expr::Ident(ident) => {
-    //                             assert_eq!(ident.0, "w")
-    //                         }
-    //                         _ => todo!(),
-    //                     }
-    //                     assert_eq!(consequence.len(), 1);
-    //                     match consequence.get(0) {
-    //                         Some(stmt) => {
-    //                             assert_eq!(stmt, &Stmt::Break);
-    //                         }
-    //                         _ => todo!(),
-    //                     }
-    //                 }
-    //                 _ => todo!(),
-    //             },
-    //             _ => todo!(),
-    //         },
-    //         _ => todo!(),
-    //     }
-    // }
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Expr(Expr::While {
+                cond: Box::new(Expr::Infix(
+                    Infix::LT,
+                    Box::new(Expr::Ident(Ident(String::from("x")))),
+                    Box::new(Expr::Ident(Ident(String::from("y")))),
+                )),
+                consequence: vec![
+                    Stmt::ReAssign(
+                        Ident(String::from("b")),
+                        Expr::Infix(
+                            Infix::Plus,
+                            Box::new(Expr::Ident(Ident(String::from("b")))),
+                            Box::new(Expr::Literal(Literal::Int(10)))
+                        )
+                    ),
+                    Stmt::Expr(Expr::If {
+                        cond: Box::new(Expr::Infix(
+                            Infix::Equal,
+                            Box::new(Expr::Ident(Ident(String::from("b")))),
+                            Box::new(Expr::Literal(Literal::Int(30)))
+                        )),
+                        consequence: vec![Stmt::Break],
+                        alternative: Some(vec![Stmt::Continue]),
+                    }),
+                ],
+            })],
+            program,
+        );
+    }
 
-    // #[test]
-    // fn test_parser_continue_stmt() {
-    //     let mut lexer = Lexer::new(r"while (w) { continue; }");
-    //     let mut parser = Parser::new(lexer);
-    //     let program = parser.parse();
-    //     println!("{:?}", program);
-    //     assert_eq!(program.len(), 1);
-    //     match program.get(0) {
-    //         Some(stmt) => match stmt {
-    //             Stmt::Expr(expr) => match expr {
-    //                 Expr::While { cond, consequence } => {
-    //                     match *cond.clone() {
-    //                         Expr::Ident(ident) => {
-    //                             assert_eq!(ident.0, "w")
-    //                         }
-    //                         _ => todo!(),
-    //                     }
-    //                     assert_eq!(consequence.len(), 1);
-    //                     match consequence.get(0) {
-    //                         Some(stmt) => {
-    //                             assert_eq!(stmt, &Stmt::Continue);
-    //                         }
-    //                         _ => todo!(),
-    //                     }
-    //                 }
-    //                 _ => todo!(),
-    //             },
-    //             _ => todo!(),
-    //         },
-    //         _ => todo!(),
-    //     }
-    // }
-
-    // #[test]
-    // fn test_parser_illegal_let_stmt() {
-    //     let mut lexer = Lexer::new(r"let five 5");
-    //     let mut parser = Parser::new(lexer);
-    //     let program = parser.parse();
-    //     assert_eq!(program.len(), 0);
-    // }
-
-    // #[test]
-    // fn test_parser_if_stmt() {
-    //     let mut lexer = Lexer::new(r"if (w) { q = 5 } else { q = 1 }");
-    //     let mut parser = Parser::new(lexer);
-    //     let program = parser.parse();
-    //     println!("{:?}", program);
-    //     assert_eq!(program.len(), 1);
-    //     match program.get(0) {
-    //         Some(stmt) => match stmt {
-    //             Stmt::Expr(expr) => match expr {
-    //                 Expr::If {
-    //                     cond,
-    //                     consequence,
-    //                     alternative,
-    //                 } => {
-    //                     match *cond.clone() {
-    //                         Expr::Ident(ident) => {
-    //                             assert_eq!(ident.0, "w")
-    //                         }
-    //                         _ => todo!(),
-    //                     }
-    //                     assert_eq!(consequence.len(), 1);
-    //                     match consequence.get(0) {
-    //                         Some(stmt) => match stmt {
-    //                             Stmt::ReAssign(ident, expr) => {
-    //                                 assert_eq!(ident.0, "q");
-    //                                 match expr {
-    //                                     Expr::Literal(ltr) => match ltr {
-    //                                         Literal::Int(i) => {
-    //                                             assert_eq!(*i, 5i64)
-    //                                         }
-    //                                         _ => todo!(),
-    //                                     },
-    //                                     _ => todo!(),
-    //                                 }
-    //                             }
-    //                             _ => todo!(),
-    //                         },
-    //                         _ => todo!(),
-    //                     }
-    //                     if let Some(alternative) = alternative {
-    //                         assert_eq!(alternative.len(), 1);
-    //                         match alternative.get(0) {
-    //                             Some(stmt) => match stmt {
-    //                                 Stmt::ReAssign(ident, expr) => {
-    //                                     assert_eq!(ident.0, "q");
-    //                                     match expr {
-    //                                         Expr::Literal(ltr) => match ltr {
-    //                                             Literal::Int(i) => {
-    //                                                 assert_eq!(*i, 1i64)
-    //                                             }
-    //                                             _ => todo!(),
-    //                                         },
-    //                                         _ => todo!(),
-    //                                     }
-    //                                 }
-    //                                 _ => todo!(),
-    //                             },
-    //                             _ => todo!(),
-    //                         }
-    //                     }
-    //                 }
-    //                 _ => todo!(),
-    //             },
-    //             _ => todo!(),
-    //         },
-    //         _ => todo!(),
-    //     }
-    // }
 }
