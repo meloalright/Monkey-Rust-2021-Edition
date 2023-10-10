@@ -4,17 +4,25 @@ pub mod object;
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Evaluator {
-    pub env: env::Env
+    pub env: env::Env,
 }
 
+///
+// Evaluator Basic Implement
+///
 impl Evaluator {
+    pub fn new(env: env::Env) -> Self {
+        Evaluator { env }
+    }
+
     pub fn eval(&mut self, program: &ast::Program) -> Option<object::Object> {
         let mut result = None;
-        
+
         for stmt in program {
             match self.eval_stmt(stmt) {
                 Some(object::Object::ReturnValue(value)) => return Some(*value),
-                obj => { println!("env {:?} obj {:?}", self.env, obj); result = obj }
+                Some(object::Object::Error(msg)) => return Some(object::Object::Error(msg)),
+                obj => result = obj,
             }
         }
         result
@@ -30,13 +38,9 @@ impl Evaluator {
                 let ast::Ident(name) = ident;
                 self.env.set(name.clone(), value);
                 None
-            },
-            ast::Stmt::Break => {
-                Some(object::Object::BreakStatement)
-            },
-            ast::Stmt::Continue => {
-                None
-            },
+            }
+            ast::Stmt::Break => Some(object::Object::BreakStatement),
+            ast::Stmt::Continue => None,
             ast::Stmt::Return(expr) => {
                 let value = match self.eval_expr(expr) {
                     Some(value) => value,
@@ -54,17 +58,149 @@ impl Evaluator {
                 self.env.set(name.clone(), value);
                 None
             }
-            _ => todo!()
+            _ => todo!(),
+        }
+    }
+}
+
+///
+// truthy + Error Eval Implement
+///
+impl Evaluator {
+    fn error(msg: String) -> object::Object {
+        object::Object::Error(msg)
+    }
+
+    fn is_truthy(obj: object::Object) -> bool {
+        match obj {
+            object::Object::Int(0) => false,
+            // todo
+            _ => true,
+        }
+    }
+}
+
+///
+// Condition Eval Implement
+///
+impl Evaluator {
+    // if
+    fn eval_if_expr(
+        &mut self,
+        cond: &ast::Expr,
+        consequence: &ast::BlockStmt,
+        alternative: &Option<ast::BlockStmt>,
+    ) -> Option<object::Object> {
+        let cond = match self.eval_expr(cond) {
+            Some(cond) => cond,
+            None => return None,
+        };
+
+        if Self::is_truthy(cond) {
+            self.eval_block_stmt(consequence)
+        } else if let Some(alt) = alternative {
+            self.eval_block_stmt(alt)
+        } else {
+            None
         }
     }
 
+    // while
+    fn eval_while_expr(
+        &mut self,
+        cond: &ast::Expr,
+        consequence: &ast::BlockStmt,
+    ) -> Option<object::Object> {
+        let mut result: Option<object::Object> = None;
+        loop {
+            let cond_result = match self.eval_expr(cond) {
+                Some(cond) => cond,
+                None => break,
+            };
+            if !Self::is_truthy(cond_result.clone()) {
+                break;
+            }
+            match self.eval_block_stmt_with_continue_and_break_statement(consequence) {
+                Some(object::Object::BreakStatement) => {
+                    result = Some(object::Object::Null);
+                    break;
+                }
+                Some(object::Object::ContinueStatement) => {
+                    result = Some(object::Object::Null);
+                    continue;
+                }
+                Some(object::Object::ReturnValue(value)) => {
+                    return Some(object::Object::ReturnValue(value))
+                }
+                _ => {}
+            }
+        }
+        result
+    }
+
+    // continue + break
+    fn eval_block_stmt_with_continue_and_break_statement(
+        &mut self,
+        stmts: &ast::BlockStmt,
+    ) -> Option<object::Object> {
+        let mut result = None;
+
+        for stmt in stmts {
+            // if *stmt == ast::Stmt::Blank {
+            //     continue;
+            // }
+
+            match self.eval_stmt(stmt) {
+                Some(object::Object::ReturnValue(value)) => {
+                    return Some(object::Object::ReturnValue(value))
+                }
+                Some(object::Object::BreakStatement) => {
+                    return Some(object::Object::BreakStatement)
+                }
+                Some(object::Object::ContinueStatement) => {
+                    return Some(object::Object::ContinueStatement)
+                }
+                Some(object::Object::Error(msg)) => return Some(object::Object::Error(msg)),
+                obj => result = obj,
+                _ => todo!(),
+            }
+        }
+
+        result
+    }
+
+    // block
+    fn eval_block_stmt(&mut self, stmts: &ast::BlockStmt) -> Option<object::Object> {
+        let mut result = None;
+
+        for stmt in stmts {
+            // if *stmt == ast::Stmt::Blank {
+            //     continue;
+            // }
+
+            match self.eval_stmt(stmt) {
+                Some(object::Object::ReturnValue(value)) => {
+                    return Some(object::Object::ReturnValue(value))
+                }
+                Some(object::Object::Error(msg)) => return Some(object::Object::Error(msg)),
+                obj => result = obj,
+                _ => todo!(),
+            }
+        }
+
+        result
+    }
+}
+
+/// Expr Eval Implement
+impl Evaluator {
     fn eval_expr(&mut self, expr: &ast::Expr) -> Option<object::Object> {
         match expr {
             ast::Expr::Ident(ident) => Some(self.eval_ident(ident)),
             ast::Expr::Literal(literal) => Some(self.eval_literal(literal)),
-            ast::Expr::Prefix(prefix, right_expr) => {
-                self.eval_expr(&*right_expr).map(|right| self.eval_prefix_expr(prefix, right))
-            }
+            ast::Expr::Prefix(prefix, right_expr) => self
+                .eval_expr(&*right_expr)
+                .map(|right| self.eval_prefix_expr(prefix, right)),
             ast::Expr::Infix(infix, left_expr, right_expr) => {
                 let left = self.eval_expr(&*left_expr);
                 let right = self.eval_expr(&*right_expr);
@@ -80,16 +216,7 @@ impl Evaluator {
                 consequence,
                 alternative,
             } => self.eval_if_expr(&*cond, consequence, alternative),
-            _ => { None }
-        }
-    }
-
-    fn eval_ident(&mut self, ident: &ast::Ident) -> object::Object {
-        let ast::Ident(name) = ident;
-
-        match self.env.get(name.clone()) {
-            Some(value) => value,
-            None => panic!(),
+            _ => None,
         }
     }
 
@@ -125,7 +252,12 @@ impl Evaluator {
         }
     }
 
-    fn eval_infix_expr(&mut self, infix: &ast::Infix, left: object::Object, right: object::Object) -> object::Object {
+    fn eval_infix_expr(
+        &mut self,
+        infix: &ast::Infix,
+        left: object::Object,
+        right: object::Object,
+    ) -> object::Object {
         match left {
             object::Object::Int(left_value) => {
                 if let object::Object::Int(right_value) = right {
@@ -145,7 +277,6 @@ impl Evaluator {
         }
     }
 
-
     fn eval_infix_int_expr(&mut self, infix: &ast::Infix, left: i64, right: i64) -> object::Object {
         match infix {
             ast::Infix::Plus => object::Object::Int(left + right),
@@ -158,131 +289,54 @@ impl Evaluator {
             // ast::Infix::GreaterThanEqual => object::Object::Bool(left >= right),
             // ast::Infix::Equal => object::Object::Bool(left == right),
             // ast::Infix::NotEqual => object::Object::Bool(left != right),
-            _ => todo!()
-        }
-    }
-
-
-    fn eval_literal(&mut self, literal: &ast::Literal) -> object::Object {
-        match literal {
-            ast::Literal::Int(value) => object::Object::Int(*value),
-            _ => panic!()
-        }
-    }
-
-    fn eval_while_expr(&mut self, cond: &ast::Expr, consequence: &ast::BlockStmt) -> Option<object::Object> {
-        let mut result: Option<object::Object> = None;
-        loop {
-            let cond_result = match self.eval_expr(cond) {
-                Some(cond) => cond,
-                None => break,
-            };
-            if !Self::is_truthy(cond_result.clone()) {
-                break;
-            }
-            match self.eval_block_stmt_with_continue_and_break_statement(consequence) {
-                Some(object::Object::BreakStatement) => {
-                    result = Some(object::Object::Null);
-                    break;
-                },
-                Some(object::Object::ContinueStatement) => {
-                    result = Some(object::Object::Null);
-                    continue;
-                },
-                Some(object::Object::ReturnValue(value)) => return Some(object::Object::ReturnValue(value)),
-                _ => {}
-            }
-        }
-        result
-    }
-
-    fn eval_if_expr(
-        &mut self,
-        cond: &ast::Expr,
-        consequence: &ast::BlockStmt,
-        alternative: &Option<ast::BlockStmt>,
-    ) -> Option<object::Object> {
-        let cond = match self.eval_expr(cond) {
-            Some(cond) => cond,
-            None => return None,
-        };
-
-        if Self::is_truthy(cond) {
-            self.eval_block_stmt(consequence)
-        } else if let Some(alt) = alternative {
-            self.eval_block_stmt(alt)
-        } else {
-            None
-        }
-    }
-
-
-
-    fn eval_block_stmt(&mut self, stmts: &ast::BlockStmt) -> Option<object::Object> {
-        let mut result = None;
-
-        for stmt in stmts {
-            // if *stmt == ast::Stmt::Blank {
-            //     continue;
-            // }
-
-            match self.eval_stmt(stmt) {
-                Some(object::Object::ReturnValue(value)) => return Some(object::Object::ReturnValue(value)),
-                Some(object::Object::Error(msg)) => return Some(object::Object::Error(msg)),
-                obj => result = obj,
-                _ => todo!()
-            }
-        }
-
-        result
-    }
-
-    fn eval_block_stmt_with_continue_and_break_statement(&mut self, stmts: &ast::BlockStmt) -> Option<object::Object> {
-        let mut result = None;
-
-        for stmt in stmts {
-            // if *stmt == ast::Stmt::Blank {
-            //     continue;
-            // }
-
-            match self.eval_stmt(stmt) {
-                Some(object::Object::ReturnValue(value)) => return Some(object::Object::ReturnValue(value)),
-                Some(object::Object::BreakStatement) => return Some(object::Object::BreakStatement),
-                Some(object::Object::ContinueStatement) => return Some(object::Object::ContinueStatement),
-                Some(object::Object::Error(msg)) => return Some(object::Object::Error(msg)),
-                obj => result = obj,
-                _ => todo!()
-            }
-        }
-
-        result
-    }
-
-    fn error(msg: String) -> object::Object {
-        object::Object::Error(msg)
-    }
-
-    fn is_truthy(obj: object::Object) -> bool {
-        match obj {
-            object::Object::Int(0) => false,
-            // todo
-            _ => true,
+            _ => todo!(),
         }
     }
 }
 
+///
+// Function Eval Implement
+///
+impl Evaluator {
+    fn eval_call_expr() {
+        todo!()
+    }
+}
+
+///
+// ...
+///
+impl Evaluator {
+    fn eval_ident(&mut self, ident: &ast::Ident) -> object::Object {
+        let ast::Ident(name) = ident;
+
+        match self.env.get(name.clone()) {
+            Some(value) => value,
+            None => panic!(),
+        }
+    }
+
+    fn eval_literal(&mut self, literal: &ast::Literal) -> object::Object {
+        match literal {
+            ast::Literal::Int(value) => object::Object::Int(*value),
+            _ => panic!(),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use crate::lexer::Lexer;
-    use crate::parser::Parser;
-    use super::Evaluator;
     use super::env;
     use super::object;
+    use super::Evaluator;
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
 
     fn eval(input: &str) -> Option<object::Object> {
-        Evaluator { env: env::Env::new() }
-            .eval(&Parser::new(Lexer::new(input)).parse())
+        Evaluator {
+            env: env::Env::new(),
+        }
+        .eval(&Parser::new(Lexer::new(input)).parse())
     }
 
     /// cases in edition 2015
@@ -308,7 +362,10 @@ mod tests {
             ("2 * (5 + 10)", Some(object::Object::Int(30))),
             ("3 * 3 * 3 + 10", Some(object::Object::Int(37))),
             ("3 * (3 * 3) + 10", Some(object::Object::Int(37))),
-            ("(5 + 10 * 2 + 15 / 3) * 2 + -10", Some(object::Object::Int(50))),
+            (
+                "(5 + 10 * 2 + 15 / 3) * 2 + -10",
+                Some(object::Object::Int(50)),
+            ),
         ];
 
         for (input, expect) in tests {
@@ -362,7 +419,9 @@ mod tests {
         let mut lexer = Lexer::new(r"let five = 5; five = 6");
         let mut parser = Parser::new(lexer);
         let program = parser.parse();
-        let mut evaluator = Evaluator { env: env::Env::new() };
+        let mut evaluator = Evaluator {
+            env: env::Env::new(),
+        };
         evaluator.eval(&program);
     }
 
@@ -371,7 +430,9 @@ mod tests {
         let mut lexer = Lexer::new(r"let a = 5; while (a) { a = 0; }");
         let mut parser = Parser::new(lexer);
         let program = parser.parse();
-        let mut evaluator = Evaluator { env: env::Env::new() };
+        let mut evaluator = Evaluator {
+            env: env::Env::new(),
+        };
         evaluator.eval(&program);
     }
 
@@ -380,7 +441,9 @@ mod tests {
         let mut lexer = Lexer::new(r"let a = 5; while (a) { a = 3; break; }");
         let mut parser = Parser::new(lexer);
         let program = parser.parse();
-        let mut evaluator = Evaluator { env: env::Env::new() };
+        let mut evaluator = Evaluator {
+            env: env::Env::new(),
+        };
         evaluator.eval(&program);
     }
 
@@ -390,17 +453,23 @@ mod tests {
         let mut parser = Parser::new(lexer);
         let program = parser.parse();
         println!("program {:?}", program);
-        let mut evaluator = Evaluator { env: env::Env::new() };
+        let mut evaluator = Evaluator {
+            env: env::Env::new(),
+        };
         evaluator.eval(&program);
     }
 
     #[test]
     fn test_continue_evaluator() {
-        let mut lexer = Lexer::new(r"let a = 5; let b = 7; while (a) { if (b) { a = 3; b = 0; continue; } else { a = 0; b = 1; break; } }");
+        let mut lexer = Lexer::new(
+            r"let a = 5; let b = 7; while (a) { if (b) { a = 3; b = 0; continue; } else { a = 0; b = 1; break; } }",
+        );
         let mut parser = Parser::new(lexer);
         let program = parser.parse();
         println!("program {:?}", program);
-        let mut evaluator = Evaluator { env: env::Env::new() };
+        let mut evaluator = Evaluator {
+            env: env::Env::new(),
+        };
         evaluator.eval(&program);
     }
 }

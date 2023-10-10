@@ -48,6 +48,23 @@ impl Parser {
 
         program
     }
+
+    /// The entry of parse stmt
+    fn parse_stmt(&mut self) -> Option<Stmt> {
+        match self.current_token {
+            Token::Let => self.parse_let_stmt(),
+            Token::Const => self.parse_const_stmt(),
+            Token::Return => self.parse_return_stmt(),
+            Token::Ident(_) => match self.next_token {
+                Token::Assign => self.parse_reassign_stmt(),
+                _ => self.parse_expr_stmt(),
+            },
+            Token::Break => self.parse_break_stmt(),
+            Token::Continue => self.parse_continue_stmt(),
+            Token::Blank => Some(Stmt::Blank),
+            _ => self.parse_expr_stmt(),
+        }
+    }
 }
 
 ///
@@ -96,42 +113,6 @@ impl Parser {
 // Stmt Assign Implement
 ///
 impl Parser {
-    /// The entry of parse stmt
-    fn parse_stmt(&mut self) -> Option<Stmt> {
-        match self.current_token {
-            Token::Let => self.parse_let_stmt(),
-            Token::Const => self.parse_const_stmt(),
-            Token::Return => self.parse_return_stmt(),
-            Token::Ident(_) => match self.next_token {
-                Token::Assign => self.parse_reassign_stmt(),
-                _ => self.parse_expr_stmt(),
-            },
-            Token::Break => self.parse_break_stmt(),
-            Token::Continue => self.parse_continue_stmt(),
-            Token::Blank => Some(Stmt::Blank),
-            _ => self.parse_expr_stmt(),
-        }
-    }
-
-    fn parse_block_stmt(&mut self) -> BlockStmt {
-        self.walk_token();
-
-        let mut block: Vec<Stmt> = vec![];
-
-        while !self.current_token_is(Token::RBrace) {
-            if self.current_token_is(Token::Eof) {
-                self.error_next_token(Token::RBrace);
-                return block;
-            }
-            match self.parse_stmt() {
-                Some(stmt) => block.push(stmt),
-                None => {}
-            }
-            self.walk_token();
-        }
-
-        block
-    }
 
     /// let
     fn parse_let_stmt(&mut self) -> Option<Stmt> {
@@ -339,6 +320,26 @@ impl Parser {
         }
 
         Some(Stmt::Return(expr))
+    }
+
+    fn parse_block_stmt(&mut self) -> BlockStmt {
+        self.walk_token();
+
+        let mut block: Vec<Stmt> = vec![];
+
+        while !self.current_token_is(Token::RBrace) {
+            if self.current_token_is(Token::Eof) {
+                self.error_next_token(Token::RBrace);
+                return block;
+            }
+            match self.parse_stmt() {
+                Some(stmt) => block.push(stmt),
+                None => {}
+            }
+            self.walk_token();
+        }
+
+        block
     }
 }
 
