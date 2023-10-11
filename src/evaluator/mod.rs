@@ -266,13 +266,13 @@ impl Evaluator {
                     Self::error(format!("type mismatch: {} {} {}", left, infix, right))
                 }
             }
-            // object::Object::String(left_value) => {
-            //     if let object::Object::String(right_value) = right {
-            //         self.eval_infix_string_expr(infix, left_value, right_value)
-            //     } else {
-            //         Self::error(format!("type mismatch: {} {} {}", left_value, infix, right))
-            //     }
-            // }
+            object::Object::String(left_value) => {
+                if let object::Object::String(right_value) = right {
+                    self.eval_infix_string_expr(infix, left_value, right_value)
+                } else {
+                    Self::error(format!("type mismatch: {} {} {}", left_value, infix, right))
+                }
+            }
             _ => Self::error(format!("unknown operator: {} {} {}", left, infix, right)),
         }
     }
@@ -283,13 +283,23 @@ impl Evaluator {
             ast::Infix::Minus => object::Object::Int(left - right),
             ast::Infix::Multiply => object::Object::Int(left * right),
             ast::Infix::Divide => object::Object::Int(left / right),
-            // ast::Infix::LessThan => object::Object::Bool(left < right),
-            // ast::Infix::LessThanEqual => object::Object::Bool(left <= right),
-            // ast::Infix::GreaterThan => object::Object::Bool(left > right),
-            // ast::Infix::GreaterThanEqual => object::Object::Bool(left >= right),
-            // ast::Infix::Equal => object::Object::Bool(left == right),
-            // ast::Infix::NotEqual => object::Object::Bool(left != right),
+            ast::Infix::LT => object::Object::Bool(left < right),
+            ast::Infix::LTEQ => object::Object::Bool(left <= right),
+            ast::Infix::GT => object::Object::Bool(left > right),
+            ast::Infix::GTEQ => object::Object::Bool(left >= right),
+            ast::Infix::Equal => object::Object::Bool(left == right),
+            ast::Infix::NotEqual => object::Object::Bool(left != right),
             _ => todo!(),
+        }
+    }
+
+    fn eval_infix_string_expr(&mut self, infix: &ast::Infix, left: String, right: String) -> object::Object {
+        match infix {
+            ast::Infix::Plus => object::Object::String(format!("{}{}", left, right)),
+            _ => object::Object::Error(format!(
+                "unknown operator: {} {} {}",
+                left, infix, right
+            )),
         }
     }
 }
@@ -319,6 +329,8 @@ impl Evaluator {
     fn eval_literal(&mut self, literal: &ast::Literal) -> object::Object {
         match literal {
             ast::Literal::Int(value) => object::Object::Int(*value),
+            ast::Literal::String(value) => object::Object::String(value.clone()),
+            ast::Literal::Bool(value) => object::Object::Bool(*value),
             _ => panic!(),
         }
     }
@@ -366,6 +378,159 @@ mod tests {
                 "(5 + 10 * 2 + 15 / 3) * 2 + -10",
                 Some(object::Object::Int(50)),
             ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+    }
+
+    #[test]
+    fn test_string_expr() {
+        let input = "\"Hello World!\"";
+
+        assert_eq!(
+            Some(object::Object::String(String::from("Hello World!"))),
+            eval(input)
+        );
+    }
+
+    #[test]
+    fn test_string_concatenation() {
+        let input = "\"Hello\" + \" \" + \"World!\"";
+
+        assert_eq!(
+            Some(object::Object::String(String::from("Hello World!"))),
+            eval(input)
+        );
+    }
+
+    #[test]
+    fn test_boolean_expr() {
+        let tests = vec![
+            ("true", Some(object::Object::Bool(true))),
+            ("false", Some(object::Object::Bool(false))),
+            ("1 < 2", Some(object::Object::Bool(true))),
+            ("1 > 2", Some(object::Object::Bool(false))),
+            ("1 < 1", Some(object::Object::Bool(false))),
+            ("1 > 1", Some(object::Object::Bool(false))),
+            ("1 >= 1", Some(object::Object::Bool(true))),
+            ("1 <= 1", Some(object::Object::Bool(true))),
+            ("1 >= 2", Some(object::Object::Bool(false))),
+            ("1 <= 1", Some(object::Object::Bool(true))),
+            ("2 <= 1", Some(object::Object::Bool(false))),
+            ("1 == 1", Some(object::Object::Bool(true))),
+            ("1 != 1", Some(object::Object::Bool(false))),
+            ("1 == 2", Some(object::Object::Bool(false))),
+            ("1 != 2", Some(object::Object::Bool(true))),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+    }
+
+    #[test]
+    fn test_array_literal() {}
+
+    #[test]
+    fn test_array_index_expr() {}
+
+    #[test]
+    fn test_hash_literal() {}
+
+    #[test]
+    fn test_hash_index_expr() {}
+
+    #[test]
+    fn test_not_operator() {}
+
+    #[test]
+    fn test_if_else_expr() {}
+
+    #[test]
+    fn test_return_stmt() {}
+
+    #[test]
+    fn test_let_stmt() {
+        let tests = vec![
+            ("let a = 5; a;", Some(object::Object::Int(5))),
+            ("let a = 5 * 5; a;", Some(object::Object::Int(25))),
+            ("let a = 5; let b = a; b;", Some(object::Object::Int(5))),
+            (
+                "let a = 5; let b = a; let c = a + b + 5; c;",
+                Some(object::Object::Int(15)),
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+    }
+
+    #[test]
+    fn test_const_stmt() {}
+
+    #[test]
+    fn test_assign_stmt() {
+        let tests = vec![
+            ("let a = 5; a = 3; a", Some(object::Object::Int(3))),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+    }
+
+    #[test]
+    fn test_blank_stmt() {}
+
+    #[test]
+    fn test_fn_object() {}
+
+    #[test]
+    fn test_fn_application() {}
+
+    #[test]
+    fn test_closures() {}
+
+    #[test]
+    fn test_builtin_functions() {}
+
+    #[test]
+    fn test_error_handling() {
+        let tests = vec![
+            (
+                "5 + true",
+                Some(object::Object::Error(String::from("type mismatch: 5 + true"))),
+            ),
+            (
+                "5 + true; 5;",
+                Some(object::Object::Error(String::from("type mismatch: 5 + true"))),
+            ),
+            (
+                "-true",
+                Some(object::Object::Error(String::from("unknown operator: -true"))),
+            ),
+            (
+                "5; true + false; 5;",
+                Some(object::Object::Error(String::from(
+                    "unknown operator: true + false",
+                ))),
+            ),
+            (
+                "if (10 > 1) { true + false; }",
+                Some(object::Object::Error(String::from(
+                    "unknown operator: true + false",
+                ))),
+            ),
+            (
+                "\"Hello\" - \"World\"",
+                Some(object::Object::Error(String::from(
+                    "unknown operator: Hello - World",
+                ))),
+            ),
+            // todo cases
         ];
 
         for (input, expect) in tests {

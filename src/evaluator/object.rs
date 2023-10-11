@@ -1,8 +1,11 @@
 use std::fmt;
+use crate::lexer::unescape::escape_str;
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum Object {
     Int(i64),
+    String(String),
+    Bool(bool),
     ReturnValue(Box<Object>),
     BreakStatement,
     ContinueStatement,
@@ -15,8 +18,8 @@ impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Object::Int(ref value) => write!(f, "{}", value),
-            // Object::String(ref value) => write!(f, "{}", escape_str(value)),
-            // Object::Bool(ref value) => write!(f, "{}", value),
+            Object::String(ref value) => write!(f, "{}", escape_str(value)),
+            Object::Bool(ref value) => write!(f, "{}", value),
             // Object::Array(ref objects) => {
             //     let mut result = String::new();
             //     for (i, obj) in objects.iter().enumerate() {
