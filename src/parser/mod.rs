@@ -107,6 +107,13 @@ impl Parser {
     pub fn get_errors(&mut self) -> ParseErrors {
         self.errors.clone()
     }
+
+    fn error_no_prefix_parser(&mut self) {
+        self.errors.push(ParseError::UnexpectedToken {
+            want: None,
+            got: self.next_token.clone(),
+        });
+    }
 }
 
 ///
@@ -376,7 +383,7 @@ impl Parser {
             Token::While => self.parse_while_expr(),
             Token::Function => self.parse_function_expr(),
             _ => {
-                // todo!();
+                self.error_no_prefix_parser();
                 None
             }
         };
@@ -491,8 +498,11 @@ impl Parser {
         }
 
         if !self.assert_next_token(Token::RBrace) {
+            self.walk_token();
             return None;
         }
+
+        self.walk_token();
 
         Some(Expr::Literal(Literal::Hash(pairs)))
     }

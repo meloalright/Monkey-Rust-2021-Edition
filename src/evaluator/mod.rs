@@ -78,6 +78,13 @@ impl Evaluator {
             _ => true,
         }
     }
+
+    fn is_error(obj: &object::Object) -> bool {
+        match obj {
+            object::Object::Error(_) => true,
+            _ => false,
+        }
+    }
 }
 
 ///
@@ -210,6 +217,15 @@ impl Evaluator {
                     None
                 }
             }
+            ast::Expr::Index(left_expr, index_expr) => {
+                let left = self.eval_expr(&*left_expr);
+                let index = self.eval_expr(&*index_expr);
+                if left.is_some() && index.is_some() {
+                    Some(self.eval_index_expr(left.unwrap(), index.unwrap()))
+                } else {
+                    None
+                }
+            }
             ast::Expr::While { cond, consequence } => self.eval_while_expr(&*cond, consequence),
             ast::Expr::If {
                 cond,
@@ -293,13 +309,15 @@ impl Evaluator {
         }
     }
 
-    fn eval_infix_string_expr(&mut self, infix: &ast::Infix, left: String, right: String) -> object::Object {
+    fn eval_infix_string_expr(
+        &mut self,
+        infix: &ast::Infix,
+        left: String,
+        right: String,
+    ) -> object::Object {
         match infix {
             ast::Infix::Plus => object::Object::String(format!("{}{}", left, right)),
-            _ => object::Object::Error(format!(
-                "unknown operator: {} {} {}",
-                left, infix, right
-            )),
+            _ => object::Object::Error(format!("unknown operator: {} {} {}", left, infix, right)),
         }
     }
 }
@@ -331,8 +349,78 @@ impl Evaluator {
             ast::Literal::Int(value) => object::Object::Int(*value),
             ast::Literal::String(value) => object::Object::String(value.clone()),
             ast::Literal::Bool(value) => object::Object::Bool(*value),
+            ast::Literal::Array(objects) => self.eval_array_literal(objects),
+            ast::Literal::Hash(pairs) => self.eval_hash_literal(pairs),
             _ => panic!(),
         }
+    }
+}
+
+///
+// array, hash, index ...
+///
+impl Evaluator {
+    fn eval_array_literal(&mut self, objects: &Vec<ast::Expr>) -> object::Object {
+        object::Object::Array(
+            objects
+                .iter()
+                .map(|e| self.eval_expr(&e.clone()).unwrap_or(object::Object::Null))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    fn eval_index_expr(&mut self, left: object::Object, index: object::Object) -> object::Object {
+        match left {
+            object::Object::Array(ref array) => {
+                if let object::Object::Int(i) = index {
+                    self.eval_array_index_expr(array.clone(), i)
+                } else {
+                    Self::error(format!("index operator not supported: {}", left))
+                }
+            }
+            object::Object::Hash(ref hash) => match index {
+                object::Object::Int(_) | object::Object::Bool(_) | object::Object::String(_) => match hash.get(&index) {
+                    Some(o) => o.clone(),
+                    None => object::Object::Null,
+                },
+                object::Object::Error(_) => index,
+                _ => Self::error(format!("unusable as hash key: {}", index)),
+            },
+            _ => Self::error(format!("uknown operator: {} {}", left, index)),
+        }
+    }
+
+    fn eval_array_index_expr(&mut self, array: Vec<object::Object>, index: i64) -> object::Object {
+        let max = array.len() as i64;
+
+        if index < 0 || index > max {
+            return object::Object::Null;
+        }
+
+        match array.get(index as usize) {
+            Some(o) => o.clone(),
+            None => object::Object::Null,
+        }
+    }
+
+    fn eval_hash_literal(&mut self, pairs: &Vec<(ast::Expr, ast::Expr)>) -> object::Object {
+        let mut hash = std::collections::HashMap::new();
+
+        for (key_expr, value_expr) in pairs {
+            let key = self.eval_expr(key_expr).unwrap_or(object::Object::Null);
+            if Self::is_error(&key) {
+                return key;
+            }
+
+            let value = self.eval_expr(value_expr).unwrap_or(object::Object::Null);
+            if Self::is_error(&value) {
+                return value;
+            }
+
+            hash.insert(key, value);
+        }
+
+        object::Object::Hash(hash)
     }
 }
 
@@ -431,16 +519,88 @@ mod tests {
     }
 
     #[test]
-    fn test_array_literal() {}
+    fn test_array_literal() {
+        let input = "[1, 2 * 2, 3 + 3]";
+
+        assert_eq!(
+            Some(object::Object::Array(vec![
+                object::Object::Int(1),
+                object::Object::Int(4),
+                object::Object::Int(6),
+            ])),
+            eval(input),
+        );
+    }
 
     #[test]
-    fn test_array_index_expr() {}
+    fn test_array_index_expr() {
+        let tests = vec![
+            ("[1, 2, 3][0]", Some(object::Object::Int(1))),
+            ("[1, 2, 3][1]", Some(object::Object::Int(2))),
+            ("let i = 0; [1][i]", Some(object::Object::Int(1))),
+            ("[1, 2, 3][1 + 1];", Some(object::Object::Int(3))),
+            (
+                "let myArray = [1, 2, 3]; myArray[2];",
+                Some(object::Object::Int(3)),
+            ),
+            (
+                "let myArray = [1, 2, 3]; myArray[0] + myArray[1] + myArray[2];",
+                Some(object::Object::Int(6)),
+            ),
+            (
+                "let myArray = [1, 2, 3]; let i = myArray[0]; myArray[i];",
+                Some(object::Object::Int(2)),
+            ),
+            ("[1, 2, 3][3]", Some(object::Object::Null)),
+            ("[1, 2, 3][-1]", Some(object::Object::Null)),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+    }
 
     #[test]
-    fn test_hash_literal() {}
+    fn test_hash_literal() {
+        let input = r#"
+let two = "two";
+{
+  "one": 10 - 9,
+  two: 1 + 1,
+  "thr" + "ee": 6 / 2,
+  4: 4,
+  true: 5,
+  false: 6
+}
+"#;
+
+        let mut hash = std::collections::HashMap::new();
+        hash.insert(object::Object::String(String::from("one")), object::Object::Int(1));
+        hash.insert(object::Object::String(String::from("two")), object::Object::Int(2));
+        hash.insert(object::Object::String(String::from("three")), object::Object::Int(3));
+        hash.insert(object::Object::Int(4), object::Object::Int(4));
+        hash.insert(object::Object::Bool(true), object::Object::Int(5));
+        hash.insert(object::Object::Bool(false), object::Object::Int(6));
+
+        assert_eq!(Some(object::Object::Hash(hash)), eval(input),);
+    }
 
     #[test]
-    fn test_hash_index_expr() {}
+    fn test_hash_index_expr() {
+        let tests = vec![
+            ("{\"foo\": 5}[\"foo\"]", Some(object::Object::Int(5))),
+            ("{\"foo\": 5}[\"bar\"]", Some(object::Object::Null)),
+            ("let key = \"foo\"; {\"foo\": 5}[key]", Some(object::Object::Int(5))),
+            ("{}[\"foo\"]", Some(object::Object::Null)),
+            ("{5: 5}[5]", Some(object::Object::Int(5))),
+            ("{true: 5}[true]", Some(object::Object::Int(5))),
+            ("{false: 5}[false]", Some(object::Object::Int(5))),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+    }
 
     #[test]
     fn test_not_operator() {}
@@ -473,9 +633,7 @@ mod tests {
 
     #[test]
     fn test_assign_stmt() {
-        let tests = vec![
-            ("let a = 5; a = 3; a", Some(object::Object::Int(3))),
-        ];
+        let tests = vec![("let a = 5; a = 3; a", Some(object::Object::Int(3)))];
 
         for (input, expect) in tests {
             assert_eq!(expect, eval(input));
@@ -502,15 +660,21 @@ mod tests {
         let tests = vec![
             (
                 "5 + true",
-                Some(object::Object::Error(String::from("type mismatch: 5 + true"))),
+                Some(object::Object::Error(String::from(
+                    "type mismatch: 5 + true",
+                ))),
             ),
             (
                 "5 + true; 5;",
-                Some(object::Object::Error(String::from("type mismatch: 5 + true"))),
+                Some(object::Object::Error(String::from(
+                    "type mismatch: 5 + true",
+                ))),
             ),
             (
                 "-true",
-                Some(object::Object::Error(String::from("unknown operator: -true"))),
+                Some(object::Object::Error(String::from(
+                    "unknown operator: -true",
+                ))),
             ),
             (
                 "5; true + false; 5;",

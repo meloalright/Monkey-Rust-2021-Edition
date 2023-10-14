@@ -1,11 +1,15 @@
 use std::fmt;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use crate::lexer::unescape::escape_str;
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(Eq, PartialEq, Clone, Debug)]
 pub enum Object {
     Int(i64),
     String(String),
     Bool(bool),
+    Array(Vec<Object>),
+    Hash(HashMap<Object, Object>),
     ReturnValue(Box<Object>),
     BreakStatement,
     ContinueStatement,
@@ -20,28 +24,28 @@ impl fmt::Display for Object {
             Object::Int(ref value) => write!(f, "{}", value),
             Object::String(ref value) => write!(f, "{}", escape_str(value)),
             Object::Bool(ref value) => write!(f, "{}", value),
-            // Object::Array(ref objects) => {
-            //     let mut result = String::new();
-            //     for (i, obj) in objects.iter().enumerate() {
-            //         if i < 1 {
-            //             result.push_str(&format!("{}", obj));
-            //         } else {
-            //             result.push_str(&format!(", {}", obj));
-            //         }
-            //     }
-            //     write!(f, "[{}]", result)
-            // }
-            // Object::Hash(ref hash) => {
-            //     let mut result = String::new();
-            //     for (i, (k, v)) in hash.iter().enumerate() {
-            //         if i < 1 {
-            //             result.push_str(&format!("{}: {}", k, v));
-            //         } else {
-            //             result.push_str(&format!(", {}: {}", k, v));
-            //         }
-            //     }
-            //     write!(f, "{{{}}}", result)
-            // }
+            Object::Array(ref objects) => {
+                let mut result = String::new();
+                for (i, obj) in objects.iter().enumerate() {
+                    if i < 1 {
+                        result.push_str(&format!("{}", obj));
+                    } else {
+                        result.push_str(&format!(", {}", obj));
+                    }
+                }
+                write!(f, "[{}]", result)
+            }
+            Object::Hash(ref hash) => {
+                let mut result = String::new();
+                for (i, (k, v)) in hash.iter().enumerate() {
+                    if i < 1 {
+                        result.push_str(&format!("{}: {}", k, v));
+                    } else {
+                        result.push_str(&format!(", {}: {}", k, v));
+                    }
+                }
+                write!(f, "{{{}}}", result)
+            }
             // Object::Func(ref params, _, _) => {
             //     let mut result = String::new();
             //     for (i, Ident(ref s)) in params.iter().enumerate() {
@@ -59,6 +63,17 @@ impl fmt::Display for Object {
             Object::ContinueStatement => write!(f, "ContinueStatement"),
             Object::ReturnValue(ref value) => write!(f, "ReturnValue({})", value),
             Object::Error(ref value) => write!(f, "Error({})", value),
+        }
+    }
+}
+
+impl Hash for Object {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match *self {
+            Object::Int(ref i) => i.hash(state),
+            Object::Bool(ref b) => b.hash(state),
+            Object::String(ref s) => s.hash(state),
+            _ => "".hash(state),
         }
     }
 }
