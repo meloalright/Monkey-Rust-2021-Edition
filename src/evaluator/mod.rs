@@ -40,7 +40,7 @@ impl Evaluator {
                 None
             }
             ast::Stmt::Break => Some(object::Object::BreakStatement),
-            ast::Stmt::Continue => None,
+            ast::Stmt::Continue => Some(object::Object::ContinueStatement),
             ast::Stmt::Return(expr) => {
                 let value = match self.eval_expr(expr) {
                     Some(value) => value,
@@ -73,8 +73,7 @@ impl Evaluator {
 
     fn is_truthy(obj: object::Object) -> bool {
         match obj {
-            object::Object::Int(0) => false,
-            // todo
+            object::Object::Null | object::Object::Bool(false) => false,
             _ => true,
         }
     }
@@ -245,13 +244,12 @@ impl Evaluator {
     }
 
     fn eval_not_op_expr(&mut self, right: object::Object) -> object::Object {
-        todo!();
-        // match right {
-        //     object::Object::Bool(true) => object::Object::Bool(false),
-        //     object::Object::Bool(false) => object::Object::Bool(true),
-        //     object::Object::Null => object::Object::Bool(true),
-        //     _ => object::Object::Bool(false),
-        // }
+        match right {
+            object::Object::Bool(true) => object::Object::Bool(false),
+            object::Object::Bool(false) => object::Object::Bool(true),
+            object::Object::Null => object::Object::Bool(true),
+            _ => object::Object::Bool(false),
+        }
     }
 
     fn eval_minus_prefix_op_expr(&mut self, right: object::Object) -> object::Object {
@@ -379,10 +377,12 @@ impl Evaluator {
                 }
             }
             object::Object::Hash(ref hash) => match index {
-                object::Object::Int(_) | object::Object::Bool(_) | object::Object::String(_) => match hash.get(&index) {
-                    Some(o) => o.clone(),
-                    None => object::Object::Null,
-                },
+                object::Object::Int(_) | object::Object::Bool(_) | object::Object::String(_) => {
+                    match hash.get(&index) {
+                        Some(o) => o.clone(),
+                        None => object::Object::Null,
+                    }
+                }
                 object::Object::Error(_) => index,
                 _ => Self::error(format!("unusable as hash key: {}", index)),
             },
@@ -575,9 +575,18 @@ let two = "two";
 "#;
 
         let mut hash = std::collections::HashMap::new();
-        hash.insert(object::Object::String(String::from("one")), object::Object::Int(1));
-        hash.insert(object::Object::String(String::from("two")), object::Object::Int(2));
-        hash.insert(object::Object::String(String::from("three")), object::Object::Int(3));
+        hash.insert(
+            object::Object::String(String::from("one")),
+            object::Object::Int(1),
+        );
+        hash.insert(
+            object::Object::String(String::from("two")),
+            object::Object::Int(2),
+        );
+        hash.insert(
+            object::Object::String(String::from("three")),
+            object::Object::Int(3),
+        );
         hash.insert(object::Object::Int(4), object::Object::Int(4));
         hash.insert(object::Object::Bool(true), object::Object::Int(5));
         hash.insert(object::Object::Bool(false), object::Object::Int(6));
@@ -590,7 +599,10 @@ let two = "two";
         let tests = vec![
             ("{\"foo\": 5}[\"foo\"]", Some(object::Object::Int(5))),
             ("{\"foo\": 5}[\"bar\"]", Some(object::Object::Null)),
-            ("let key = \"foo\"; {\"foo\": 5}[key]", Some(object::Object::Int(5))),
+            (
+                "let key = \"foo\"; {\"foo\": 5}[key]",
+                Some(object::Object::Int(5)),
+            ),
             ("{}[\"foo\"]", Some(object::Object::Null)),
             ("{5: 5}[5]", Some(object::Object::Int(5))),
             ("{true: 5}[true]", Some(object::Object::Int(5))),
@@ -603,13 +615,76 @@ let two = "two";
     }
 
     #[test]
-    fn test_not_operator() {}
+    fn test_not_operator() {
+        let tests = vec![
+            ("!true", Some(object::Object::Bool(false))),
+            ("!false", Some(object::Object::Bool(true))),
+            ("!!true", Some(object::Object::Bool(true))),
+            ("!!false", Some(object::Object::Bool(false))),
+            ("!!5", Some(object::Object::Bool(true))),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+    }
 
     #[test]
-    fn test_if_else_expr() {}
+    fn test_if_else_expr() {
+        let tests = vec![
+            ("if (true) { 10 }", Some(object::Object::Int(10))),
+            ("if (false) { 10 }", None),
+            ("if (1) { 10 }", Some(object::Object::Int(10))),
+            ("if (1 < 2) { 10 }", Some(object::Object::Int(10))),
+            ("if (1 > 2) { 10 }", None),
+            (
+                "if (1 > 2) { 10 } else { 20 }",
+                Some(object::Object::Int(20)),
+            ),
+            (
+                "if (1 < 2) { 10 } else { 20 }",
+                Some(object::Object::Int(10)),
+            ),
+            ("if (1 <= 2) { 10 }", Some(object::Object::Int(10))),
+            ("if (1 >= 2) { 10 }", None),
+            (
+                "if (1 >= 2) { 10 } else { 20 }",
+                Some(object::Object::Int(20)),
+            ),
+            (
+                "if (1 <= 2) { 10 } else { 20 }",
+                Some(object::Object::Int(10)),
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+    }
 
     #[test]
-    fn test_return_stmt() {}
+    fn test_return_stmt() {
+        let tests = vec![
+            ("return 10;", Some(object::Object::Int(10))),
+            ("return 10; 9;", Some(object::Object::Int(10))),
+            ("return 2 * 5; 8;", Some(object::Object::Int(10))),
+            ("9; return 2 * 5; 9;", Some(object::Object::Int(10))),
+            (
+                r#"
+if (10 > 1) {
+  if (10 > 1) {
+    return 10;
+  }
+  return 1;
+}"#,
+                Some(object::Object::Int(10)),
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+    }
 
     #[test]
     fn test_let_stmt() {
@@ -704,101 +779,35 @@ let two = "two";
 
     /// self cases
 
-    // #[test]
-    // fn test_let_evaluator() {
-    //     let mut lexer = Lexer::new(r"let five = 5;");
-    //     let mut parser = Parser::new(lexer);
-    //     let program = parser.parse();
-    //     let mut evaluator = Evaluator { env: env::Env::new() };
-    //     evaluator.eval(&program);
-    // }
-
-    // #[test]
-    // fn test_return_evaluator() {
-    //     let mut lexer = Lexer::new(r"return 3");
-    //     let mut parser = Parser::new(lexer);
-    //     let program = parser.parse();
-    //     let mut evaluator = Evaluator { env: env::Env::new() };
-    //     let rt = evaluator.eval(&program);
-    //     match rt {
-    //         Some(object::object::object::Object::Int(v)) => {
-    //             assert_eq!(v, 3i64);
-    //         },
-    //         _ => todo!()
-    //     }
-    // }
-
-    // #[test]
-    // fn test_expr_evaluator() {
-    //     let mut lexer = Lexer::new(r"6");
-    //     let mut parser = Parser::new(lexer);
-    //     let program = parser.parse();
-    //     let mut evaluator = Evaluator { env: env::Env::new() };
-    //     let rt = evaluator.eval(&program);
-    //     match rt {
-    //         Some(object::object::object::Object::Int(v)) => {
-    //             assert_eq!(v, 6i64);
-    //         },
-    //         _ => todo!()
-    //     }
-    // }
-
     #[test]
     fn test_reassign_evaluator() {
-        let mut lexer = Lexer::new(r"let five = 5; five = 6");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse();
-        let mut evaluator = Evaluator {
-            env: env::Env::new(),
-        };
-        evaluator.eval(&program);
+        let tests = vec![
+            ("let five = 5; five = 6; five", Some(object::Object::Int(6))),
+            (
+                "let y = 5; let x = 3; x = y; x",
+                Some(object::Object::Int(5)),
+            ),
+            (
+                "let y = 5; let x = 3; x = x + y * y / 5 - 1; x",
+                Some(object::Object::Int(7)),
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
     }
 
     #[test]
-    fn test_while_evaluator() {
-        let mut lexer = Lexer::new(r"let a = 5; while (a) { a = 0; }");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse();
-        let mut evaluator = Evaluator {
-            env: env::Env::new(),
-        };
-        evaluator.eval(&program);
-    }
+    fn test_while_break_continue_evaluator() {
+        let tests = vec![
+            ("let cond = true; a = 5; while (cond) { a = 3; cond = false; } a;", Some(object::Object::Int(3))),
+            ("let cond = true; a = 5; while (cond) { a = a - 1; if (a == 2) { break; } } a", Some(object::Object::Int(2))),
+            ("let cond = true; a = 5; while (cond) { a = a - 1; if (a >= 2) { continue; } return a; }", Some(object::Object::Int(1))),
+        ];
 
-    #[test]
-    fn test_break_evaluator() {
-        let mut lexer = Lexer::new(r"let a = 5; while (a) { a = 3; break; }");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse();
-        let mut evaluator = Evaluator {
-            env: env::Env::new(),
-        };
-        evaluator.eval(&program);
-    }
-
-    #[test]
-    fn test_if_else_evaluator() {
-        let mut lexer = Lexer::new(r"let a = 2; let b = 0;; if (a) { b = 1 } else { b = 2 }");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse();
-        println!("program {:?}", program);
-        let mut evaluator = Evaluator {
-            env: env::Env::new(),
-        };
-        evaluator.eval(&program);
-    }
-
-    #[test]
-    fn test_continue_evaluator() {
-        let mut lexer = Lexer::new(
-            r"let a = 5; let b = 7; while (a) { if (b) { a = 3; b = 0; continue; } else { a = 0; b = 1; break; } }",
-        );
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse();
-        println!("program {:?}", program);
-        let mut evaluator = Evaluator {
-            env: env::Env::new(),
-        };
-        evaluator.eval(&program);
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
     }
 }
