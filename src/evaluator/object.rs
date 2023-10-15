@@ -1,15 +1,20 @@
 use std::fmt;
+use std::rc::Rc;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use crate::evaluator::env;
+use crate::ast;
 use crate::lexer::unescape::escape_str;
 
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum Object {
     Int(i64),
     String(String),
     Bool(bool),
     Array(Vec<Object>),
     Hash(HashMap<Object, Object>),
+    Function(Vec<ast::Ident>, ast::BlockStmt, Rc<RefCell<env::Env>>),
     ReturnValue(Box<Object>),
     BreakStatement,
     ContinueStatement,
@@ -46,17 +51,17 @@ impl fmt::Display for Object {
                 }
                 write!(f, "{{{}}}", result)
             }
-            // Object::Func(ref params, _, _) => {
-            //     let mut result = String::new();
-            //     for (i, Ident(ref s)) in params.iter().enumerate() {
-            //         if i < 1 {
-            //             result.push_str(&s.to_string());
-            //         } else {
-            //             result.push_str(&format!(", {}", s));
-            //         }
-            //     }
-            //     write!(f, "fn({}) {{ ... }}", result)
-            // }
+            Object::Function(ref params, _, _) => {
+                let mut result = String::new();
+                for (i, ast::Ident(ref s)) in params.iter().enumerate() {
+                    if i < 1 {
+                        result.push_str(&s.to_string());
+                    } else {
+                        result.push_str(&format!(", {}", s));
+                    }
+                }
+                write!(f, "fn({}) {{ ... }}", result)
+            }
             // Object::Builtin(_, _) => write!(f, "[builtin function]"),
             Object::Null => write!(f, "null"),
             Object::BreakStatement => write!(f, "BreakStatement"),
@@ -66,6 +71,8 @@ impl fmt::Display for Object {
         }
     }
 }
+
+impl Eq for Object {}
 
 impl Hash for Object {
     fn hash<H: Hasher>(&self, state: &mut H) {

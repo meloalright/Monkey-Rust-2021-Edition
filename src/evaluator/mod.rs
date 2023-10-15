@@ -1,6 +1,9 @@
-use crate::ast;
+use std::rc::Rc;
+use std::cell::RefCell;
+
 pub mod env;
 pub mod object;
+use crate::ast;
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Evaluator {
@@ -19,6 +22,9 @@ impl Evaluator {
         let mut result = None;
 
         for stmt in program {
+            if *stmt == ast::Stmt::Blank {
+                continue;
+            }
             match self.eval_stmt(stmt) {
                 Some(object::Object::ReturnValue(value)) => return Some(*value),
                 Some(object::Object::Error(msg)) => return Some(object::Object::Error(msg)),
@@ -35,10 +41,28 @@ impl Evaluator {
                     Some(value) => value,
                     None => return None,
                 };
-                let ast::Ident(name) = ident;
-                self.env.set(name.clone(), value);
-                None
+                if Self::is_error(&value) {
+                    Some(value)
+                } else {
+                    let ast::Ident(name) = ident;
+                    self.env.set(name.clone(), value);
+                    None
+                }
             }
+            ast::Stmt::Const(ident, expr) => {
+                let value = match self.eval_expr(expr) {
+                    Some(value) => value,
+                    None => return None,
+                };
+                if Self::is_error(&value) {
+                    Some(value)
+                } else {
+                    let ast::Ident(name) = ident;
+                    self.env.set(name.clone(), value);
+                    self.env.constant(name.clone());
+                    None
+                }
+            },
             ast::Stmt::Break => Some(object::Object::BreakStatement),
             ast::Stmt::Continue => Some(object::Object::ContinueStatement),
             ast::Stmt::Return(expr) => {
@@ -54,9 +78,16 @@ impl Evaluator {
                     Some(value) => value,
                     None => return None,
                 };
-                let ast::Ident(name) = ident;
-                self.env.set(name.clone(), value);
-                None
+                if Self::is_error(&value) {
+                    Some(value)
+                } else {
+                    let ast::Ident(name) = ident;
+                    if self.env.is_constant(name.clone()) {
+                        return Some(object::Object::Error(format!("{} {}!", "Can not assign to constant variable", name)));
+                    }
+                    self.env.set(name.clone(), value);
+                    None
+                }
             }
             _ => todo!(),
         }
@@ -152,9 +183,9 @@ impl Evaluator {
         let mut result = None;
 
         for stmt in stmts {
-            // if *stmt == ast::Stmt::Blank {
-            //     continue;
-            // }
+            if *stmt == ast::Stmt::Blank {
+                continue;
+            }
 
             match self.eval_stmt(stmt) {
                 Some(object::Object::ReturnValue(value)) => {
@@ -180,9 +211,9 @@ impl Evaluator {
         let mut result = None;
 
         for stmt in stmts {
-            // if *stmt == ast::Stmt::Blank {
-            //     continue;
-            // }
+            if *stmt == ast::Stmt::Blank {
+                continue;
+            }
 
             match self.eval_stmt(stmt) {
                 Some(object::Object::ReturnValue(value)) => {
@@ -231,6 +262,13 @@ impl Evaluator {
                 consequence,
                 alternative,
             } => self.eval_if_expr(&*cond, consequence, alternative),
+            ast::Expr::Function { params, body } => Some(object::Object::Function(
+                params.clone(),
+                body.clone(),
+                Rc::new(RefCell::new(self.env.clone())),
+                // Rc::clone(&self.env), // TODO
+            )),
+            ast::Expr::Call { func, args } => Some(self.eval_call_expr(func, args)),
             _ => None,
         }
     }
@@ -322,10 +360,61 @@ impl Evaluator {
 
 ///
 // Function Eval Implement
+// (put args ident list into scoped env and the eval block stmts with the scoped env)
 ///
 impl Evaluator {
-    fn eval_call_expr() {
-        todo!()
+
+    fn eval_call_expr(&mut self, func: &Box<ast::Expr>, args: &Vec<ast::Expr>) -> object::Object {
+        let args = args
+            .iter()
+            .map(|e| self.eval_expr(e).unwrap_or(object::Object::Null))
+            .collect::<Vec<_>>();
+
+        let (params, body, env) = match self.eval_expr(&*func) {
+            Some(object::Object::Function(params, body, env)) => (params, body, env),
+            // Some(object::Object::Builtin(expect_param_num, f)) => {
+            //     if expect_param_num < 0 || expect_param_num == args.len() as i32 {
+            //         return f(args);
+            //     } else {
+            //         return Self::error(format!(
+            //             "wrong number of arguments. got={}, want={}",
+            //             args.len(),
+            //             expect_param_num,
+            //         ));
+            //     }
+            // }
+            Some(o) => return Self::error(format!("{} is not valid function", o)),
+            None => return object::Object::Null,
+        };
+
+        if params.len() != args.len() {
+            return Self::error(format!(
+                "wrong number of arguments: {} expected but {} given",
+                params.len(),
+                args.len()
+            ));
+        }
+
+        // let current_env = Rc::clone(&self.env); // TODO
+        let current_env = self.env.clone();
+        let mut scoped_env = env::Env::new_with_outer(Rc::clone(&env));
+        let list = params.iter().zip(args.iter());
+        for (_, (ident, o)) in list.enumerate() {
+            let ast::Ident(name) = ident.clone();
+            scoped_env.set(name, o.clone()); // TODO
+        }
+
+        self.env = scoped_env; // TODO
+
+        let object = self.eval_block_stmt(&body);
+
+        self.env = current_env;
+
+        match object {
+            Some(object::Object::ReturnValue(o)) => *o,
+            Some(o) => o,
+            None => object::Object::Null,
+        }
     }
 }
 
@@ -338,7 +427,7 @@ impl Evaluator {
 
         match self.env.get(name.clone()) {
             Some(value) => value,
-            None => panic!(),
+            None => object::Object::Error(format!("identifier not found: {}", name)),
         }
     }
 
@@ -429,6 +518,9 @@ mod tests {
     use super::env;
     use super::object;
     use super::Evaluator;
+    use std::rc::Rc;
+    use std::cell::RefCell;
+    use crate::ast;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
 
@@ -704,7 +796,15 @@ if (10 > 1) {
     }
 
     #[test]
-    fn test_const_stmt() {}
+    fn test_const_stmt() {
+        let tests = vec![
+            ("const a = 5; a = 3;", Some(object::Object::Error("Can not assign to constant variable a!".to_owned()))),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+    }
 
     #[test]
     fn test_assign_stmt() {
@@ -716,13 +816,85 @@ if (10 > 1) {
     }
 
     #[test]
-    fn test_blank_stmt() {}
+    fn test_blank_stmt() {
+        let tests = vec![
+            (
+                r#"5;
+
+
+"#,
+                Some(object::Object::Int(5)),
+            ),
+            (
+                r#"let identity = fn (x) {
+  x;
+
+}
+
+identity(100);
+
+"#,
+                Some(object::Object::Int(100)),
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+    }
 
     #[test]
-    fn test_fn_object() {}
+    fn test_fn_object() {
+        let input = "fn(x) { x + 2; };";
+
+        assert_eq!(
+            Some(object::Object::Function(
+                vec![ast::Ident(String::from("x"))],
+                vec![ast::Stmt::Expr(ast::Expr::Infix(
+                    ast::Infix::Plus,
+                    Box::new(ast::Expr::Ident(ast::Ident(String::from("x")))),
+                    Box::new(ast::Expr::Literal(ast::Literal::Int(2))),
+                ))],
+                Rc::new(RefCell::new(env::Env::new())),
+            )),
+            eval(input),
+        );
+    }
 
     #[test]
-    fn test_fn_application() {}
+    fn test_fn_application() {
+        let tests = vec![
+            (
+                "let identity = fn(x) { x; }; identity(5);",
+                Some(object::Object::Int(5)),
+            ),
+            (
+                "let identity = fn(x) { return x; }; identity(5);",
+                Some(object::Object::Int(5)),
+            ),
+            (
+                "let double = fn(x) { x * 2; }; double(5);",
+                Some(object::Object::Int(10)),
+            ),
+            (
+                "let add = fn(x, y) { x + y; }; add(5, 5);",
+                Some(object::Object::Int(10)),
+            ),
+            (
+                "let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));",
+                Some(object::Object::Int(20)),
+            ),
+            ("fn(x) { x; }(5)", Some(object::Object::Int(5))),
+            (
+                "fn(a) { let f = fn(b) { a + b }; f(a); }(5);",
+                Some(object::Object::Int(10)),
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+    }
 
     #[test]
     fn test_closures() {}
