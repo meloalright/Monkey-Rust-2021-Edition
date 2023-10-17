@@ -897,7 +897,18 @@ identity(100);
     }
 
     #[test]
-    fn test_closures() {}
+    fn test_closures() {
+        let input = r#"
+let newAdder = fn(x) {
+  fn(y) { x + y };
+}
+
+let addTwo = newAdder(2);
+addTwo(2);
+        "#;
+
+        assert_eq!(Some(object::Object::Int(4)), eval(input));
+    }
 
     #[test]
     fn test_builtin_functions() {}
