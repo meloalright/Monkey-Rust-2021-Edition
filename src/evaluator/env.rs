@@ -24,6 +24,14 @@ impl Env {
         }
     }
 
+    pub fn from(builtins: HashMap<String, Object>) -> Self {
+        Env {
+            identifiers: builtins,
+            variables_status: HashMap::new(),
+            outer: None,
+        }
+    }
+
     pub fn new_with_outer(outer: Rc<RefCell<Env>>) -> Self {
         Env {
             identifiers: HashMap::new(),
@@ -48,7 +56,6 @@ impl Env {
 }
 
 impl Env {
-
     pub fn constant(&mut self, name: String) {
         match self.variables_status.get_mut(&name) {
             Some(variable_status) => {
@@ -63,10 +70,8 @@ impl Env {
 
     pub fn is_constant(&mut self, name: String) -> bool {
         match self.variables_status.get(&name) {
-            Some(variable_status) => {
-                variable_status.constant == true
-            }
-            None => false
+            Some(variable_status) => variable_status.constant == true,
+            None => false,
         }
     }
 }

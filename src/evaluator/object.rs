@@ -7,6 +7,8 @@ use crate::evaluator::env;
 use crate::ast;
 use crate::lexer::unescape::escape_str;
 
+pub type BuiltinFunc = fn(Vec<Object>) -> Object;
+
 #[derive(PartialEq, Clone, Debug)]
 pub enum Object {
     Int(i64),
@@ -15,6 +17,7 @@ pub enum Object {
     Array(Vec<Object>),
     Hash(HashMap<Object, Object>),
     Function(Vec<ast::Ident>, ast::BlockStmt, Rc<RefCell<env::Env>>),
+    Builtin(i32, BuiltinFunc),
     ReturnValue(Box<Object>),
     BreakStatement,
     ContinueStatement,
@@ -62,7 +65,7 @@ impl fmt::Display for Object {
                 }
                 write!(f, "fn({}) {{ ... }}", result)
             }
-            // Object::Builtin(_, _) => write!(f, "[builtin function]"),
+            Object::Builtin(_, _) => write!(f, "[builtin function]"),
             Object::Null => write!(f, "null"),
             Object::BreakStatement => write!(f, "BreakStatement"),
             Object::ContinueStatement => write!(f, "ContinueStatement"),

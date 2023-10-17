@@ -3,6 +3,7 @@ use std::cell::RefCell;
 
 pub mod env;
 pub mod object;
+pub mod builtins;
 use crate::ast;
 
 #[derive(PartialEq, Clone, Debug)]
@@ -372,17 +373,17 @@ impl Evaluator {
 
         let (params, body, env) = match self.eval_expr(&*func) {
             Some(object::Object::Function(params, body, env)) => (params, body, env),
-            // Some(object::Object::Builtin(expect_param_num, f)) => {
-            //     if expect_param_num < 0 || expect_param_num == args.len() as i32 {
-            //         return f(args);
-            //     } else {
-            //         return Self::error(format!(
-            //             "wrong number of arguments. got={}, want={}",
-            //             args.len(),
-            //             expect_param_num,
-            //         ));
-            //     }
-            // }
+            Some(object::Object::Builtin(expect_param_num, f)) => {
+                if expect_param_num < 0 || expect_param_num == args.len() as i32 {
+                    return f(args);
+                } else {
+                    return Self::error(format!(
+                        "wrong number of arguments. got={}, want={}",
+                        args.len(),
+                        expect_param_num,
+                    ));
+                }
+            }
             Some(o) => return Self::error(format!("{} is not valid function", o)),
             None => return object::Object::Null,
         };
@@ -523,10 +524,11 @@ mod tests {
     use crate::ast;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
+    use crate::evaluator::builtins::new_builtins;
 
     fn eval(input: &str) -> Option<object::Object> {
         Evaluator {
-            env: env::Env::new(),
+            env: env::Env::from(new_builtins()),
         }
         .eval(&Parser::new(Lexer::new(input)).parse())
     }
@@ -855,7 +857,7 @@ identity(100);
                     Box::new(ast::Expr::Ident(ast::Ident(String::from("x")))),
                     Box::new(ast::Expr::Literal(ast::Literal::Int(2))),
                 ))],
-                Rc::new(RefCell::new(env::Env::new())),
+                Rc::new(RefCell::new(env::Env::from(new_builtins()))),
             )),
             eval(input),
         );
@@ -911,7 +913,18 @@ addTwo(2);
     }
 
     #[test]
-    fn test_builtin_functions() {}
+    fn test_builtin_functions() {
+        let tests = vec![
+            // len
+            ("len(\"\")", Some(object::Object::Int(0))),
+            // todo
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
+        }
+
+    }
 
     #[test]
     fn test_error_handling() {
