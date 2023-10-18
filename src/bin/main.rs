@@ -1,16 +1,18 @@
-#[cfg(feature="repl")]
+#[cfg(feature = "repl")]
 extern crate rustyline;
 
-use monkey::lexer::Lexer;
-use monkey::parser::Parser;
+use monkey::evaluator::builtins::new_builtins;
 use monkey::evaluator::env;
 use monkey::evaluator::Evaluator;
+use monkey::lexer::Lexer;
+use monkey::parser::Parser;
 
 fn main() {
-
     let mut rl = rustyline::DefaultEditor::new().expect("should exist");
 
-    let mut evaluator = Evaluator { env: env::Env::new() };
+    let mut evaluator = Evaluator {
+        env: env::Env::from(new_builtins()),
+    };
 
     loop {
         match rl.readline(">> ") {
@@ -19,10 +21,19 @@ fn main() {
                 let mut lexer = Lexer::new(&line);
                 let mut parser = Parser::new(lexer);
                 let program = parser.parse();
+                let errors = parser.get_errors();
 
-                evaluator.eval(&program)
+                if errors.len() > 0 {
+                    for err in errors {
+                        println!("{:?}", err);
+                    }
+                    continue;
+                }
 
-            },
+                if let Some(evaluated) = evaluator.eval(&program) {
+                    println!("{}\n", evaluated);
+                }
+            }
             Err(rustyline::error::ReadlineError::Interrupted) => {
                 println!("\n bye~");
                 break;
