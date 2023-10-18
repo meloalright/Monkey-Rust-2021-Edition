@@ -1006,4 +1006,22 @@ addTwo(2);
             assert_eq!(expect, eval(input));
         }
     }
+
+
+    #[test]
+    fn test_closure_adder() {
+        // todo
+//         let input = r#"
+// let adder = fn() {
+//   let x = 1;
+//   return fn() { x = x + 1; x };
+// }
+
+// let f = adder();
+// f();
+// f();
+//         "#;
+
+//         assert_eq!(Some(object::Object::Int(3)), eval(input));
+    }
 }
