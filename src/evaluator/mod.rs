@@ -917,7 +917,129 @@ addTwo(2);
         let tests = vec![
             // len
             ("len(\"\")", Some(object::Object::Int(0))),
-            // todo
+            ("len(\"four\")", Some(object::Object::Int(4))),
+            ("len(\"hello world\")", Some(object::Object::Int(11))),
+            ("len([1, 2, 3])", Some(object::Object::Int(3))),
+            (
+                "len(1)",
+                Some(object::Object::Error(String::from(
+                    "argument to `len` not supported, got 1",
+                ))),
+            ),
+            (
+                "len(\"one\", \"two\")",
+                Some(object::Object::Error(String::from(
+                    "wrong number of arguments. got=2, want=1",
+                ))),
+            ),
+            // first
+            ("first([1, 2, 3])", Some(object::Object::Int(1))),
+            ("first([])", Some(object::Object::Null)),
+            (
+                "first([], [])",
+                Some(object::Object::Error(String::from(
+                    "wrong number of arguments. got=2, want=1",
+                ))),
+            ),
+            (
+                "first(\"string\")",
+                Some(object::Object::Error(String::from(
+                    "argument to `first` must be array. got \"string\"",
+                ))),
+            ),
+            (
+                "first(1)",
+                Some(object::Object::Error(String::from(
+                    "argument to `first` must be array. got 1",
+                ))),
+            ),
+            // last
+            ("last([1, 2, 3])", Some(object::Object::Int(3))),
+            ("last([])", Some(object::Object::Null)),
+            (
+                "last([], [])",
+                Some(object::Object::Error(String::from(
+                    "wrong number of arguments. got=2, want=1",
+                ))),
+            ),
+            (
+                "last(\"string\")",
+                Some(object::Object::Error(String::from(
+                    "argument to `last` must be array. got \"string\"",
+                ))),
+            ),
+            (
+                "last(1)",
+                Some(object::Object::Error(String::from(
+                    "argument to `last` must be array. got 1",
+                ))),
+            ),
+            // rest
+            (
+                "rest([1, 2, 3, 4])",
+                Some(object::Object::Array(vec![
+                    object::Object::Int(2),
+                    object::Object::Int(3),
+                    object::Object::Int(4),
+                ])),
+            ),
+            (
+                "rest([2, 3, 4])",
+                Some(object::Object::Array(vec![object::Object::Int(3), object::Object::Int(4)])),
+            ),
+            ("rest([4])", Some(object::Object::Array(vec![]))),
+            ("rest([])", Some(object::Object::Null)),
+            (
+                "rest([], [])",
+                Some(object::Object::Error(String::from(
+                    "wrong number of arguments. got=2, want=1",
+                ))),
+            ),
+            (
+                "rest(\"string\")",
+                Some(object::Object::Error(String::from(
+                    "argument to `rest` must be array. got \"string\"",
+                ))),
+            ),
+            (
+                "rest(1)",
+                Some(object::Object::Error(String::from(
+                    "argument to `rest` must be array. got 1",
+                ))),
+            ),
+            // push
+            (
+                "push([1, 2, 3], 4)",
+                Some(object::Object::Array(vec![
+                    object::Object::Int(1),
+                    object::Object::Int(2),
+                    object::Object::Int(3),
+                    object::Object::Int(4),
+                ])),
+            ),
+            ("push([], 1)", Some(object::Object::Array(vec![object::Object::Int(1)]))),
+            (
+                "let a = [1]; push(a, 2); a", // 不改变原数组
+                Some(object::Object::Array(vec![object::Object::Int(1)])),
+            ),
+            (
+                "push([], [], [])",
+                Some(object::Object::Error(String::from(
+                    "wrong number of arguments. got=3, want=2",
+                ))),
+            ),
+            (
+                "push(\"string\", 1)",
+                Some(object::Object::Error(String::from(
+                    "argument to `push` must be array. got \"string\"",
+                ))),
+            ),
+            (
+                "push(1, 1)",
+                Some(object::Object::Error(String::from(
+                    "argument to `push` must be array. got 1",
+                ))),
+            ),
         ];
 
         for (input, expect) in tests {
