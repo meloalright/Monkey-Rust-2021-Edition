@@ -6,12 +6,14 @@ use monkey::evaluator::env;
 use monkey::evaluator::Evaluator;
 use monkey::lexer::Lexer;
 use monkey::parser::Parser;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 fn main() {
     let mut rl = rustyline::DefaultEditor::new().expect("should exist");
 
     let mut evaluator = Evaluator {
-        env: env::Env::from(new_builtins()),
+        env: Rc::new(RefCell::new(env::Env::from(new_builtins()))),
     };
 
     loop {

@@ -15,6 +15,12 @@ pub struct Env {
     outer: Option<Rc<RefCell<Env>>>,
 }
 
+pub enum Info {
+    ConstantForbidden,
+    NoIdentifier,
+    Succeed,
+}
+
 impl Env {
     pub fn new() -> Self {
         Env {
@@ -42,6 +48,24 @@ impl Env {
 
     pub fn set(&mut self, name: String, value: Object) {
         self.identifiers.insert(name, value.clone());
+    }
+
+    pub fn update(&mut self, name: String, value: Object) -> Info {
+        match self.identifiers.contains_key(&name) {
+            true => {
+                if self.is_constant(name.clone()) {
+                    return Info::ConstantForbidden;
+                }
+                self.identifiers.insert(name.clone(), value.clone());
+                return Info::Succeed;
+            },
+            false => {
+                match self.outer {
+                    Some(ref outer) => outer.borrow_mut().update(name, value),
+                    None => Info::NoIdentifier,
+                }
+            }
+        }
     }
 
     pub fn get(&mut self, name: String) -> Option<Object> {

@@ -8,14 +8,14 @@ use crate::ast;
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Evaluator {
-    pub env: env::Env,
+    pub env: Rc<RefCell<env::Env>>,
 }
 
 ///
 // Evaluator Basic Implement
 ///
 impl Evaluator {
-    pub fn new(env: env::Env) -> Self {
+    pub fn new(env: Rc<RefCell<env::Env>>) -> Self {
         Evaluator { env }
     }
 
@@ -46,7 +46,7 @@ impl Evaluator {
                     Some(value)
                 } else {
                     let ast::Ident(name) = ident;
-                    self.env.set(name.clone(), value);
+                    self.env.borrow_mut().set(name.clone(), value);
                     None
                 }
             }
@@ -59,8 +59,8 @@ impl Evaluator {
                     Some(value)
                 } else {
                     let ast::Ident(name) = ident;
-                    self.env.set(name.clone(), value);
-                    self.env.constant(name.clone());
+                    self.env.borrow_mut().set(name.clone(), value);
+                    self.env.borrow_mut().constant(name.clone());
                     None
                 }
             },
@@ -83,11 +83,11 @@ impl Evaluator {
                     Some(value)
                 } else {
                     let ast::Ident(name) = ident;
-                    if self.env.is_constant(name.clone()) {
-                        return Some(object::Object::Error(format!("{} {}!", "Can not assign to constant variable", name)));
+                    match self.env.borrow_mut().update(name.clone(), value) {
+                        env::Info::ConstantForbidden => Some(object::Object::Error(format!("{} {}!", "Can not assign to constant variable", name))),
+                        env::Info::NoIdentifier => Some(object::Object::Error(format!("{} {}!", "No identifier", name))),
+                        env::Info::Succeed => None,
                     }
-                    self.env.set(name.clone(), value);
-                    None
                 }
             }
             _ => todo!(),
@@ -266,8 +266,7 @@ impl Evaluator {
             ast::Expr::Function { params, body } => Some(object::Object::Function(
                 params.clone(),
                 body.clone(),
-                Rc::new(RefCell::new(self.env.clone())),
-                // Rc::clone(&self.env), // TODO
+                Rc::clone(&self.env),
             )),
             ast::Expr::Call { func, args } => Some(self.eval_call_expr(func, args)),
             _ => None,
@@ -396,16 +395,15 @@ impl Evaluator {
             ));
         }
 
-        // let current_env = Rc::clone(&self.env); // TODO
-        let current_env = self.env.clone();
+        let current_env = Rc::clone(&self.env);
         let mut scoped_env = env::Env::new_with_outer(Rc::clone(&env));
         let list = params.iter().zip(args.iter());
         for (_, (ident, o)) in list.enumerate() {
             let ast::Ident(name) = ident.clone();
-            scoped_env.set(name, o.clone()); // TODO
+            scoped_env.set(name, o.clone());
         }
 
-        self.env = scoped_env; // TODO
+        self.env = Rc::new(RefCell::new(scoped_env));
 
         let object = self.eval_block_stmt(&body);
 
@@ -426,7 +424,7 @@ impl Evaluator {
     fn eval_ident(&mut self, ident: &ast::Ident) -> object::Object {
         let ast::Ident(name) = ident;
 
-        match self.env.get(name.clone()) {
+        match self.env.borrow_mut().get(name.clone()) {
             Some(value) => value,
             None => object::Object::Error(format!("identifier not found: {}", name)),
         }
@@ -528,7 +526,7 @@ mod tests {
 
     fn eval(input: &str) -> Option<object::Object> {
         Evaluator {
-            env: env::Env::from(new_builtins()),
+            env: Rc::new(RefCell::new(env::Env::from(new_builtins()))),
         }
         .eval(&Parser::new(Lexer::new(input)).parse())
     }
@@ -1119,9 +1117,9 @@ addTwo(2);
     #[test]
     fn test_while_break_continue_evaluator() {
         let tests = vec![
-            ("let cond = true; a = 5; while (cond) { a = 3; cond = false; } a;", Some(object::Object::Int(3))),
-            ("let cond = true; a = 5; while (cond) { a = a - 1; if (a == 2) { break; } } a", Some(object::Object::Int(2))),
-            ("let cond = true; a = 5; while (cond) { a = a - 1; if (a >= 2) { continue; } return a; }", Some(object::Object::Int(1))),
+            ("let cond = true; let a = 5; while (cond) { a = 3; cond = false; } a;", Some(object::Object::Int(3))),
+            ("let cond = true; let a = 5; while (cond) { a = a - 1; if (a == 2) { break; } } a", Some(object::Object::Int(2))),
+            ("let cond = true; let a = 5; while (cond) { a = a - 1; if (a >= 2) { continue; } return a; }", Some(object::Object::Int(1))),
         ];
 
         for (input, expect) in tests {
@@ -1132,18 +1130,19 @@ addTwo(2);
 
     #[test]
     fn test_closure_adder() {
-        // todo
-//         let input = r#"
-// let adder = fn() {
-//   let x = 1;
-//   return fn() { x = x + 1; x };
-// }
+        let input = r#"
+let adder = fn() {
+  let x = 1;
+  return fn() { x = x + 1; x };
+}
 
-// let f = adder();
-// f();
-// f();
-//         "#;
+let f = adder();
+f();
+f();
+f();
+f()
+        "#;
 
-//         assert_eq!(Some(object::Object::Int(3)), eval(input));
+        assert_eq!(Some(object::Object::Int(5)), eval(input));
     }
 }
