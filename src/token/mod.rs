@@ -64,7 +64,7 @@ pub enum Token {
 mod tests {
     use super::Token;
     #[test]
-    fn test_say_hello() {
+    fn test_token_able_to_eq() {
         assert_eq!(Token::Let, Token::Let)
     }
 }

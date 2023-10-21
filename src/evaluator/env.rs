@@ -15,6 +15,7 @@ pub struct Env {
     outer: Option<Rc<RefCell<Env>>>,
 }
 
+#[derive(PartialEq, Clone, Debug)]
 pub enum Info {
     ConstantForbidden,
     NoIdentifier,
@@ -97,5 +98,86 @@ impl Env {
             Some(variable_status) => variable_status.constant == true,
             None => false,
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::BorrowMut;
+
+    use super::*;
+    use crate::evaluator::object::*;
+
+    #[test]
+    fn test_env_new() {
+        let env = Env::new();
+        assert_eq!(env.identifiers.len(), 0);
+        assert_eq!(env.outer, None);
+    }
+
+    #[test]
+    fn test_env_from() {
+        let mut store = HashMap::new();
+        store.insert("key".to_string(), Object::Int(1));
+        let env = Env::from(store);
+        assert_eq!(env.identifiers.len(), 1);
+        assert_eq!(env.outer, None);
+    }
+
+    #[test]
+    fn test_env_new_with_outer() {
+        let outer = Rc::new(RefCell::new(Env::new()));
+        let env = Env::new_with_outer(outer.clone());
+        assert_eq!(env.identifiers.len(), 0);
+        assert_eq!(env.outer, Some(outer));
+    }
+
+    #[test]
+    fn test_env_get() {
+        let mut env = Env::new();
+        env.set("key".to_string(), Object::Int(1));
+        assert_eq!(env.get("key".to_string()), Some(Object::Int(1)));
+    }
+
+    #[test]
+    fn test_env_set() {
+        let mut env = Env::new();
+        env.set("key".to_string(), Object::Int(1));
+        assert_eq!(env.identifiers.get("key"), Some(&Object::Int(1)));
+    }
+
+    // self cases
+
+    #[test]
+    fn test_update_succeed() {
+        let mut env = Env::new();
+        env.set("key".to_string(), Object::Int(1));
+        assert_eq!(env.update("key".to_string(), Object::Int(2)), Info::Succeed);
+    }
+
+    #[test]
+    fn test_update_forbidden() {
+        let mut env = Env::new();
+        env.set("key".to_string(), Object::Int(1));
+        env.constant("key".to_string());
+        assert_eq!(env.update("key".to_string(), Object::Int(2)), Info::ConstantForbidden);
+    }
+
+    #[test]
+    fn test_update_no_identifier() {
+        let mut env = Env::new();
+        assert_eq!(env.update("key".to_string(), Object::Int(2)), Info::NoIdentifier);
+    }
+
+    #[test]
+    fn test_update_out_identifier() {
+        let global = Rc::new(RefCell::new(Env::new()));
+        let outer = Rc::new(RefCell::new(Env::new_with_outer(global.clone())));
+        let mut env = Env::new_with_outer(outer.clone());
+        outer.as_ref().borrow_mut().set("key".to_string(), Object::Int(2));
+        assert_eq!(outer.as_ref().borrow_mut().update("key".to_string(), Object::Int(2)), Info::Succeed);
+        assert_eq!(env.update("key".to_string(), Object::Int(2)), Info::Succeed);
+        assert_eq!(global.as_ref().borrow_mut().update("key".to_string(), Object::Int(2)), Info::NoIdentifier);
     }
 }

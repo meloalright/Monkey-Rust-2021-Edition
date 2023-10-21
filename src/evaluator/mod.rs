@@ -1,9 +1,9 @@
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
+pub mod builtins;
 pub mod env;
 pub mod object;
-pub mod builtins;
 use crate::ast;
 
 #[derive(PartialEq, Clone, Debug)]
@@ -63,7 +63,7 @@ impl Evaluator {
                     self.env.borrow_mut().constant(name.clone());
                     None
                 }
-            },
+            }
             ast::Stmt::Break => Some(object::Object::BreakStatement),
             ast::Stmt::Continue => Some(object::Object::ContinueStatement),
             ast::Stmt::Return(expr) => {
@@ -84,8 +84,14 @@ impl Evaluator {
                 } else {
                     let ast::Ident(name) = ident;
                     match self.env.borrow_mut().update(name.clone(), value) {
-                        env::Info::ConstantForbidden => Some(object::Object::Error(format!("{} {}!", "Can not assign to constant variable", name))),
-                        env::Info::NoIdentifier => Some(object::Object::Error(format!("{} {}!", "No identifier", name))),
+                        env::Info::ConstantForbidden => Some(object::Object::Error(format!(
+                            "{} {}!",
+                            "Can not assign to constant variable", name
+                        ))),
+                        env::Info::NoIdentifier => Some(object::Object::Error(format!(
+                            "{} {}!",
+                            "No identifier", name
+                        ))),
                         env::Info::Succeed => None,
                     }
                 }
@@ -363,7 +369,6 @@ impl Evaluator {
 // (put args ident list into scoped env and the eval block stmts with the scoped env)
 ///
 impl Evaluator {
-
     fn eval_call_expr(&mut self, func: &Box<ast::Expr>, args: &Vec<ast::Expr>) -> object::Object {
         let args = args
             .iter()
@@ -517,12 +522,12 @@ mod tests {
     use super::env;
     use super::object;
     use super::Evaluator;
-    use std::rc::Rc;
-    use std::cell::RefCell;
     use crate::ast;
+    use crate::evaluator::builtins::new_builtins;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
-    use crate::evaluator::builtins::new_builtins;
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
     fn eval(input: &str) -> Option<object::Object> {
         Evaluator {
@@ -797,9 +802,12 @@ if (10 > 1) {
 
     #[test]
     fn test_const_stmt() {
-        let tests = vec![
-            ("const a = 5; a = 3;", Some(object::Object::Error("Can not assign to constant variable a!".to_owned()))),
-        ];
+        let tests = vec![(
+            "const a = 5; a = 3;",
+            Some(object::Object::Error(
+                "Can not assign to constant variable a!".to_owned(),
+            )),
+        )];
 
         for (input, expect) in tests {
             assert_eq!(expect, eval(input));
@@ -983,7 +991,10 @@ addTwo(2);
             ),
             (
                 "rest([2, 3, 4])",
-                Some(object::Object::Array(vec![object::Object::Int(3), object::Object::Int(4)])),
+                Some(object::Object::Array(vec![
+                    object::Object::Int(3),
+                    object::Object::Int(4),
+                ])),
             ),
             ("rest([4])", Some(object::Object::Array(vec![]))),
             ("rest([])", Some(object::Object::Null)),
@@ -1015,7 +1026,10 @@ addTwo(2);
                     object::Object::Int(4),
                 ])),
             ),
-            ("push([], 1)", Some(object::Object::Array(vec![object::Object::Int(1)]))),
+            (
+                "push([], 1)",
+                Some(object::Object::Array(vec![object::Object::Int(1)])),
+            ),
             (
                 "let a = [1]; push(a, 2); a", // 不改变原数组
                 Some(object::Object::Array(vec![object::Object::Int(1)])),
@@ -1043,7 +1057,6 @@ addTwo(2);
         for (input, expect) in tests {
             assert_eq!(expect, eval(input));
         }
-
     }
 
     #[test]
@@ -1093,6 +1106,35 @@ addTwo(2);
         }
     }
 
+    #[test]
+    fn test_z_combinator() {
+        let input = r#"
+let z = fn(f) {
+    return fn(x) {
+        return f(fn(y) {
+            return x(x)(y);
+        });
+        }(fn(x) {
+        return f(fn(y) {
+            return x(x)(y);
+        });
+    });
+};
+
+return z(fn(f) {
+    return fn(n) {
+    if (n == 0) {
+        1
+    } else {
+        n * f(n - 1)
+    }
+    };
+})(5);
+        "#;
+
+        assert_eq!(Some(object::Object::Int(120)), eval(input));
+    }
+
     /// self cases
 
     #[test]
@@ -1126,7 +1168,6 @@ addTwo(2);
             assert_eq!(expect, eval(input));
         }
     }
-
 
     #[test]
     fn test_closure_adder() {
