@@ -57,6 +57,8 @@ pub enum Token {
     Colon,
 
     Blank,
+
+    Macro,
 }
 
 

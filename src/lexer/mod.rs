@@ -197,6 +197,7 @@ impl Lexer {
             "break" => Token::Break,
             "continue" => Token::Continue,
             "return" => Token::Return,
+            "macro" => Token::Macro,
             _ => {
                 Token::Ident(literal)
             }
@@ -294,6 +295,9 @@ if (5 < 10) {
 "foo bar";
 
 [1, 2];
+
+
+macro(x, y) { x + y; };
 
 
 {"foo": "bar"};
@@ -398,6 +402,21 @@ if (5 < 10) {
             Token::Comma,
             Token::Int(2),
             Token::RBracket,
+            Token::Semicolon,
+            Token::Blank,
+            Token::Blank,
+            Token::Macro,
+            Token::LParen,
+            Token::Ident(String::from("x")),
+            Token::Comma,
+            Token::Ident(String::from("y")),
+            Token::RParen,
+            Token::LBrace,
+            Token::Ident(String::from("x")),
+            Token::Plus,
+            Token::Ident(String::from("y")),
+            Token::Semicolon,
+            Token::RBrace,
             Token::Semicolon,
             Token::Blank,
             Token::Blank,
