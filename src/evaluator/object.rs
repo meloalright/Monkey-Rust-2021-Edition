@@ -24,6 +24,7 @@ pub enum Object {
     Error(String),
     Null,
     Macro(Vec<ast::Ident>, ast::BlockStmt, Rc<RefCell<env::Env>>),
+    Quote(ast::Stmt),
 }
 
 /// This is actually repr
@@ -81,6 +82,9 @@ impl fmt::Display for Object {
                     }
                 }
                 write!(f, "macro({}) {{ ... }}", result)
+            }
+            Object::Quote(ref stmt) => {
+                write!(f, "QUOTE({:?})", stmt)
             }
             Object::Error(ref value) => write!(f, "Error({})", value),
         }
@@ -183,5 +187,11 @@ mod tests {
     fn test_object_error() {
         let obj = Object::Error("something went wrong".to_string());
         assert_eq!(obj.to_string(), "Error(something went wrong)");
+    }
+
+    #[test]
+    fn test_quote() {
+        let obj = Object::Quote(ast::Stmt::Blank);
+        assert_eq!(obj.to_string(), "QUOTE(Blank)");
     }
 }
