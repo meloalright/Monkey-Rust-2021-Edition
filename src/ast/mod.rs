@@ -86,6 +86,10 @@ pub enum Expr {
         func: Box<Expr>,
         args: Vec<Expr>,
     },
+    Macro {
+        params: Vec<Ident>,
+        body: BlockStmt,
+    },
 }
 
 #[derive(PartialEq, Clone, Debug)]
