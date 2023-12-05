@@ -370,6 +370,13 @@ impl Evaluator {
 ///
 impl Evaluator {
     fn eval_call_expr(&mut self, func: &Box<ast::Expr>, args: &Vec<ast::Expr>) -> object::Object {
+
+        if let ast::Expr::Ident(ident_name) = func.as_ref() {
+            if ident_name.0 == "quote" {
+               return object::Object::Quote(ast::Stmt::Expr(args[0].clone()));
+            }
+        }
+
         let args = args
             .iter()
             .map(|e| self.eval_expr(e).unwrap_or(object::Object::Null))
@@ -514,6 +521,20 @@ impl Evaluator {
         }
 
         object::Object::Hash(hash)
+    }
+}
+
+impl Evaluator {
+    pub fn expand_macros(&self, program: ast::Program) -> ast::Program {
+        return ast::modify(program, |mut stmt| {
+            match stmt {
+                // just try
+                ast::Stmt::Let(ident, expr) => {
+                    *stmt = ast::Stmt::Const(ident.to_owned(), expr.to_owned());
+                },
+                other => {}
+            }
+        });
     }
 }
 
@@ -1185,5 +1206,15 @@ f()
         "#;
 
         assert_eq!(Some(object::Object::Int(5)), eval(input));
+    }
+
+    #[test]
+    fn test_macro_call() {
+        let input = r#"
+let a = quote(1+1);
+a
+        "#;
+
+        assert_eq!("Some(Quote(Expr(Infix(Plus, Literal(Int(1)), Literal(Int(1))))))", format!("{:?}", eval(input)));
     }
 }
