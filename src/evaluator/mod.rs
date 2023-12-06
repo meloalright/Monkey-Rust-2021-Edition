@@ -274,6 +274,11 @@ impl Evaluator {
                 body.clone(),
                 Rc::clone(&self.env),
             )),
+            ast::Expr::Macro { params, body } => Some(object::Object::Macro(
+                params.clone(),
+                body.clone(),
+                Rc::clone(&self.env),
+            )),
             ast::Expr::Call { func, args } => Some(self.eval_call_expr(func, args)),
             _ => None,
         }
@@ -370,10 +375,9 @@ impl Evaluator {
 ///
 impl Evaluator {
     fn eval_call_expr(&mut self, func: &Box<ast::Expr>, args: &Vec<ast::Expr>) -> object::Object {
-
         if let ast::Expr::Ident(ident_name) = func.as_ref() {
             if ident_name.0 == "quote" {
-               return object::Object::Quote(ast::Stmt::Expr(args[0].clone()));
+                return object::Object::Quote(ast::Stmt::Expr(args[0].clone()));
             }
         }
 
@@ -395,6 +399,7 @@ impl Evaluator {
                     ));
                 }
             }
+            Some(object::Object::Macro(params, body, env)) => (params, body, env),
             Some(o) => return Self::error(format!("{} is not valid function", o)),
             None => return object::Object::Null,
         };
@@ -525,15 +530,20 @@ impl Evaluator {
 }
 
 impl Evaluator {
-    pub fn expand_macros(&self, program: ast::Program) -> ast::Program {
-        return ast::modify(program, |mut stmt| {
-            match stmt {
-                // just try
-                ast::Stmt::Let(ident, expr) => {
-                    *stmt = ast::Stmt::Const(ident.to_owned(), expr.to_owned());
-                },
-                other => {}
+    pub fn expand_macros(&mut self, program: ast::Program) -> ast::Program {
+        return ast::modify(program, |stmt| {
+            if let ast::Stmt::Let(ast::Ident(ident_name), ast::Expr::Macro { params, body }) = stmt.clone() {
+                self.env.borrow_mut().set(ident_name, object::Object::Macro(params, body, self.env.clone()))
             }
+            if let ast::Stmt::Expr(ast::Expr::Infix(infix, left_value, right_value)) = stmt.clone() {
+                if let ast::Expr::Call { func, args } = *right_value {
+                    let right_evaluated = self.eval(&vec![ast::Stmt::Expr(ast::Expr::Call { func, args })]);
+                    if let Some(object::Object::Quote(ast::Stmt::Expr(right_expr))) = right_evaluated {
+                        return ast::Stmt::Expr(ast::Expr::Infix(infix, left_value, Box::new(right_expr)));
+                    }
+                }
+            }
+            return stmt;
         });
     }
 }
@@ -555,6 +565,13 @@ mod tests {
             env: Rc::new(RefCell::new(env::Env::from(new_builtins()))),
         }
         .eval(&Parser::new(Lexer::new(input)).parse())
+    }
+
+    fn expand(input: &str) -> Vec<ast::Stmt> {
+        Evaluator {
+            env: Rc::new(RefCell::new(env::Env::from(new_builtins()))),
+        }
+        .expand_macros(Parser::new(Lexer::new(input)).parse())
     }
 
     /// cases in edition 2015
@@ -1209,12 +1226,22 @@ f()
     }
 
     #[test]
-    fn test_macro_call() {
+    fn test_macro_expand() {
         let input = r#"
-let a = quote(1+1);
-a
+let a = macro() { quote(1+1) };
+1+a()
         "#;
 
-        assert_eq!("Some(Quote(Expr(Infix(Plus, Literal(Int(1)), Literal(Int(1))))))", format!("{:?}", eval(input)));
+        assert_eq!(
+            "[Let(Ident(\"a\"), Macro { params: [], body: [Expr(Call { func: Ident(Ident(\"quote\")), args: [Infix(Plus, Literal(Int(1)), Literal(Int(1)))] })] }), Expr(Infix(Plus, Literal(Int(1)), Infix(Plus, Literal(Int(1)), Literal(Int(1)))))]",
+            format!("{:?}", expand(input))
+        );
+
+        // >> let c= macro() { quote(1+2) }
+        // >> c()
+        // QUOTE(Expr(Infix(Plus, Literal(Int(1)), Literal(Int(2)))))
+        
+        // >> 1+c()
+        // 4
     }
 }

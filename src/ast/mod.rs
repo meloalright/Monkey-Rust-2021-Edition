@@ -125,12 +125,13 @@ pub enum Precedence {
     Index,       // array[index]
 }
 
-pub fn modify<F>(mut program: Vec<Stmt>, modifer: F) -> Vec<Stmt>
+pub fn modify<F>(mut program: Vec<Stmt>, mut modifier: F) -> Vec<Stmt>
 where
-    F: Fn(&mut Stmt) -> (),
+    F: FnMut(Stmt) -> Stmt,
 {
+
     for node in program.iter_mut() {
-        modifer(node);
+        *node = modifier(node.clone());
     }
     program
 }

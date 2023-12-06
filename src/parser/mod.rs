@@ -2060,4 +2060,31 @@ return 993322;
             program,
         );
     }
+
+    #[test]
+    fn test_macro_call() {
+        let input = "let a = 1 + macro_call(2, 3)";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Let(
+                Ident(String::from("a")),
+                Expr::Infix(
+                    Infix::Plus,
+                    Box::new(Expr::Literal(Literal::Int(1))),
+                    Box::new(Expr::Call {
+                        func: Box::new(Expr::Ident(Ident(String::from("macro_call")))),
+                        args: vec![
+                            Expr::Literal(Literal::Int(2)),
+                            Expr::Literal(Literal::Int(3))
+                        ]
+                    })
+                )
+            )],
+            program,
+        );
+    }
 }
