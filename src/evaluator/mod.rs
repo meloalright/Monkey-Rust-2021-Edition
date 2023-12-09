@@ -4,7 +4,7 @@ use std::rc::Rc;
 pub mod builtins;
 pub mod env;
 pub mod object;
-use crate::ast;
+use crate::ast::{self, Ident};
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Evaluator {
@@ -377,7 +377,9 @@ impl Evaluator {
     fn eval_call_expr(&mut self, func: &Box<ast::Expr>, args: &Vec<ast::Expr>) -> object::Object {
         if let ast::Expr::Ident(ident_name) = func.as_ref() {
             if ident_name.0 == "quote" {
-                return object::Object::Quote(ast::Stmt::Expr(args[0].clone()));
+                let mut node = ast::Stmt::Expr(args[0].clone());
+                self.quote_and_eval_inner_unquote(&mut node);
+                return object::Object::Quote(node);
             }
         }
 
@@ -530,21 +532,91 @@ impl Evaluator {
 }
 
 impl Evaluator {
-    pub fn expand_macros(&mut self, program: ast::Program) -> ast::Program {
-        return ast::modify(program, |stmt| {
-            if let ast::Stmt::Let(ast::Ident(ident_name), ast::Expr::Macro { params, body }) = stmt.clone() {
-                self.env.borrow_mut().set(ident_name, object::Object::Macro(params, body, self.env.clone()))
-            }
-            if let ast::Stmt::Expr(ast::Expr::Infix(infix, left_value, right_value)) = stmt.clone() {
-                if let ast::Expr::Call { func, args } = *right_value {
-                    let right_evaluated = self.eval(&vec![ast::Stmt::Expr(ast::Expr::Call { func, args })]);
-                    if let Some(object::Object::Quote(ast::Stmt::Expr(right_expr))) = right_evaluated {
-                        return ast::Stmt::Expr(ast::Expr::Infix(infix, left_value, Box::new(right_expr)));
+
+    pub fn quote_and_eval_inner_unquote(&mut self, stmt: &mut ast::Stmt) -> () {
+        ast::modify(stmt, |expr| {
+            self.unquote_modifier(expr);
+        });
+    }
+
+    pub fn unquote_modifier(&mut self, expr: &mut ast::Expr) {
+
+        match expr {
+            ast::Expr::Call { func, args } => {
+
+                if let ast::Expr::Ident(ident_name) = func.as_ref() {
+                    if ident_name.0 == "unquote" {
+                        let unquote_expr = args.clone().to_vec()[0].to_owned();
+                        let unquote = self.eval(&vec![ast::Stmt::Expr(unquote_expr)]);
+                        match unquote {
+                            Some(object::Object::Int(x)) => *expr = ast::Expr::Literal(ast::Literal::Int(x)),
+                            Some(object::Object::Bool(bool)) => *expr = ast::Expr::Literal(ast::Literal::Bool(bool)),
+                            Some(object::Object::Quote(ast::Stmt::Expr(in_quote_expr))) => {
+                                *expr = in_quote_expr
+                            },
+                            Some(object::Object::Null) => {
+                                *expr = ast::Expr::Literal(ast::Literal::Int(-1));
+                            },
+                            _ => {
+                                println!("debug what!!={:?}", expr);
+                            }
+                        }
                     }
                 }
+            },
+            ast::Expr::Infix(infix, left_expr, right_expr) => {
+                self.unquote_modifier(left_expr);
+                self.unquote_modifier(right_expr);
+            },
+            ast::Expr::Prefix(prefix, expr) => {
+                self.unquote_modifier(expr);
+            },
+            ast::Expr::If {cond, consequence, alternative } => {
+                self.unquote_modifier(cond);
+                consequence.iter_mut().for_each(|stmt| { self.quote_and_eval_inner_unquote(stmt) });
+                if let Some(alternative) = alternative {
+                    alternative.iter_mut().for_each(|stmt| { self.quote_and_eval_inner_unquote(stmt) });
+                }
+            },
+            _ => ()
+        }
+    }
+
+    pub fn expand_macros(&mut self, program: &mut ast::Program) -> () {
+        for stmt in program.iter_mut() {
+            if let ast::Stmt::Let(ident, ref mut expr) = stmt {
+                if let ast::Expr::Macro { params, body } = expr {
+                    self.env.borrow_mut().set(ident.0.clone(), object::Object::Macro(params.to_owned(), body.to_owned(), Rc::clone(&self.env)))
+                }
             }
-            return stmt;
-        });
+            ast::modify(stmt, |expr| {
+
+                self.modifer(expr);
+            });
+        }
+    }
+
+    pub fn modifer(&mut self, expr: &mut ast::Expr) {
+        match expr {
+            ast::Expr::Call { func, args } => {
+                let mut quoted_args: Vec<ast::Expr> = vec![];
+                for arg in args.iter() {
+                    let quoted_arg = ast::Expr::Call { func: Box::new(ast::Expr::Ident(Ident("quote".to_owned()))), args: vec![arg.to_owned()] };
+                    quoted_args.push(quoted_arg);
+                }
+                let right_evaluated = self.eval(&vec![ast::Stmt::Expr(ast::Expr::Call { func: func.to_owned(), args: quoted_args.to_owned() })]);
+                if let Some(object::Object::Quote(ast::Stmt::Expr(right_expr))) = right_evaluated {
+                    *expr = right_expr;
+                }
+            },
+            ast::Expr::Infix(infix, left_expr, right_expr) => {
+                self.modifer(left_expr);
+                self.modifer(right_expr);
+            },
+            _ => {
+                // todo!()
+            }
+        }
     }
 }
 
@@ -568,10 +640,12 @@ mod tests {
     }
 
     fn expand(input: &str) -> Vec<ast::Stmt> {
-        Evaluator {
+        let mut program = Parser::new(Lexer::new(input)).parse();
+        let mut evaluator = Evaluator {
             env: Rc::new(RefCell::new(env::Env::from(new_builtins()))),
-        }
-        .expand_macros(Parser::new(Lexer::new(input)).parse())
+        };
+        evaluator.expand_macros(&mut program);
+        program
     }
 
     /// cases in edition 2015
@@ -1226,22 +1300,64 @@ f()
     }
 
     #[test]
-    fn test_macro_expand() {
+    fn test_macro_expand_quote() {
         let input = r#"
 let a = macro() { quote(1+1) };
-1+a()
+let c = 1+a()
         "#;
 
         assert_eq!(
-            "[Let(Ident(\"a\"), Macro { params: [], body: [Expr(Call { func: Ident(Ident(\"quote\")), args: [Infix(Plus, Literal(Int(1)), Literal(Int(1)))] })] }), Expr(Infix(Plus, Literal(Int(1)), Infix(Plus, Literal(Int(1)), Literal(Int(1)))))]",
+            "[Let(Ident(\"a\"), Macro { params: [], body: [Expr(Call { func: Ident(Ident(\"quote\")), args: [Infix(Plus, Literal(Int(1)), Literal(Int(1)))] })] }), Let(Ident(\"c\"), Infix(Plus, Literal(Int(1)), Infix(Plus, Literal(Int(1)), Literal(Int(1)))))]",
+            format!("{:?}", expand(input))
+        );
+    }
+
+    #[test]
+    fn test_macro_expand_unquote() {
+        let input = r#"
+let a = macro() { quote(1+1+unquote(1+1)) };
+let c = 1+a()
+        "#;
+
+        assert_eq!(
+            "[Let(Ident(\"a\"), Macro { params: [], body: [Expr(Call { func: Ident(Ident(\"quote\")), args: [Infix(Plus, Infix(Plus, Literal(Int(1)), Literal(Int(1))), Call { func: Ident(Ident(\"unquote\")), args: [Infix(Plus, Literal(Int(1)), Literal(Int(1)))] })] })] }), Let(Ident(\"c\"), Infix(Plus, Literal(Int(1)), Infix(Plus, Infix(Plus, Literal(Int(1)), Literal(Int(1))), Literal(Int(2)))))]",
+            format!("{:?}", expand(input))
+        );
+    }
+
+
+    #[test]
+    fn test_macro_expand_expr_args() {
+        let input = r#"
+let reverse = macro(a, b) { quote(unquote(b) - unquote(a)); };
+
+reverse(2 + 2, 10 - 5);
+"#;
+
+        assert_eq!(
+            "[Let(Ident(\"reverse\"), Macro { params: [Ident(\"a\"), Ident(\"b\")], body: [Expr(Call { func: Ident(Ident(\"quote\")), args: [Infix(Minus, Call { func: Ident(Ident(\"unquote\")), args: [Ident(Ident(\"b\"))] }, Call { func: Ident(Ident(\"unquote\")), args: [Ident(Ident(\"a\"))] })] })] }), Blank, Expr(Infix(Minus, Infix(Minus, Literal(Int(10)), Literal(Int(5))), Infix(Plus, Literal(Int(2)), Literal(Int(2)))))]",
             format!("{:?}", expand(input))
         );
 
-        // >> let c= macro() { quote(1+2) }
-        // >> c()
-        // QUOTE(Expr(Infix(Plus, Literal(Int(1)), Literal(Int(2)))))
-        
-        // >> 1+c()
-        // 4
+    }
+
+    #[test]
+    fn test_macro_expand_expr_if() {
+        let input = r#"
+let unless = macro(condition, consequence, alternative) {
+    quote(if (!(unquote(condition))) {
+        unquote(consequence);
+    } else {
+        unquote(alternative);
+    });
+};
+
+unless(10 > 5, puts("not greater"), puts("greater"));
+        "#;
+
+        assert_eq!(
+            "[Let(Ident(\"unless\"), Macro { params: [Ident(\"condition\"), Ident(\"consequence\"), Ident(\"alternative\")], body: [Expr(Call { func: Ident(Ident(\"quote\")), args: [If { cond: Prefix(Not, Call { func: Ident(Ident(\"unquote\")), args: [Ident(Ident(\"condition\"))] }), consequence: [Expr(Call { func: Ident(Ident(\"unquote\")), args: [Ident(Ident(\"consequence\"))] })], alternative: Some([Expr(Call { func: Ident(Ident(\"unquote\")), args: [Ident(Ident(\"alternative\"))] })]) }] })] }), Blank, Expr(If { cond: Prefix(Not, Infix(GT, Literal(Int(10)), Literal(Int(5)))), consequence: [Expr(Call { func: Ident(Ident(\"puts\")), args: [Literal(String(\"not greater\"))] })], alternative: Some([Expr(Call { func: Ident(Ident(\"puts\")), args: [Literal(String(\"greater\"))] })]) })]",
+            format!("{:?}", expand(input))
+        );
     }
 }

@@ -3,6 +3,7 @@ use crate::evaluator::object::Object;
 
 pub fn new_builtins() -> HashMap<String, Object> {
     let mut builtins = HashMap::new();
+    builtins.insert(String::from("puts"), Object::Builtin(1, monkey_puts));
     builtins.insert(String::from("len"), Object::Builtin(1, monkey_len));
     builtins.insert(String::from("first"), Object::Builtin(1, monkey_first));
     builtins.insert(String::from("last"), Object::Builtin(1, monkey_last));
@@ -11,6 +12,11 @@ pub fn new_builtins() -> HashMap<String, Object> {
     builtins
 }
 
+
+fn monkey_puts(args: Vec<Object>) -> Object {
+    println!("{:?}", args[0]);
+    Object::Null
+}
 
 fn monkey_len(args: Vec<Object>) -> Object {
     match &args[0] {
