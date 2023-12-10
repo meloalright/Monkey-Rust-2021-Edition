@@ -1,3 +1,4 @@
+mod format;
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Ident(pub String);

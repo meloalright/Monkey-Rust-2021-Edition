@@ -1325,18 +1325,30 @@ let c = 1+a()
         );
     }
 
+    #[test]
+    fn test_macro_expand_infix_expression() {
+        let input = r#"
+let infixExpression = macro() { quote(1 + 2); };
+infixExpression();
+        "#;
+
+        assert_eq!(
+            "(1 + 2)",
+             expand(input)[1].to_string()
+        );
+    }
+
 
     #[test]
     fn test_macro_expand_expr_args() {
         let input = r#"
 let reverse = macro(a, b) { quote(unquote(b) - unquote(a)); };
-
 reverse(2 + 2, 10 - 5);
 "#;
 
         assert_eq!(
-            "[Let(Ident(\"reverse\"), Macro { params: [Ident(\"a\"), Ident(\"b\")], body: [Expr(Call { func: Ident(Ident(\"quote\")), args: [Infix(Minus, Call { func: Ident(Ident(\"unquote\")), args: [Ident(Ident(\"b\"))] }, Call { func: Ident(Ident(\"unquote\")), args: [Ident(Ident(\"a\"))] })] })] }), Blank, Expr(Infix(Minus, Infix(Minus, Literal(Int(10)), Literal(Int(5))), Infix(Plus, Literal(Int(2)), Literal(Int(2)))))]",
-            format!("{:?}", expand(input))
+            "((10 - 5) - (2 + 2))",
+            expand(input)[1].to_string(),
         );
 
     }
@@ -1351,13 +1363,13 @@ let unless = macro(condition, consequence, alternative) {
         unquote(alternative);
     });
 };
-
 unless(10 > 5, puts("not greater"), puts("greater"));
         "#;
 
+
         assert_eq!(
-            "[Let(Ident(\"unless\"), Macro { params: [Ident(\"condition\"), Ident(\"consequence\"), Ident(\"alternative\")], body: [Expr(Call { func: Ident(Ident(\"quote\")), args: [If { cond: Prefix(Not, Call { func: Ident(Ident(\"unquote\")), args: [Ident(Ident(\"condition\"))] }), consequence: [Expr(Call { func: Ident(Ident(\"unquote\")), args: [Ident(Ident(\"consequence\"))] })], alternative: Some([Expr(Call { func: Ident(Ident(\"unquote\")), args: [Ident(Ident(\"alternative\"))] })]) }] })] }), Blank, Expr(If { cond: Prefix(Not, Infix(GT, Literal(Int(10)), Literal(Int(5)))), consequence: [Expr(Call { func: Ident(Ident(\"puts\")), args: [Literal(String(\"not greater\"))] })], alternative: Some([Expr(Call { func: Ident(Ident(\"puts\")), args: [Literal(String(\"greater\"))] })]) })]",
-            format!("{:?}", expand(input))
+            "if (10 > 5) { puts(\"not greater\");  }else { puts(\"greater\");  }",
+            expand(input)[1].to_string(),
         );
     }
 }
