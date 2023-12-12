@@ -1368,7 +1368,7 @@ unless(10 > 5, puts("not greater"), puts("greater"));
 
 
         assert_eq!(
-            "if (10 > 5) { puts(\"not greater\");  }else { puts(\"greater\");  }",
+            "if (!(10 > 5)) { puts(\"not greater\");  }else { puts(\"greater\");  }",
             expand(input)[1].to_string(),
         );
     }
