@@ -1,13 +1,18 @@
 use crate::ast::{ Stmt, Expr, Prefix, Infix, Literal };
 
+use super::Ident;
+
 impl Stmt {
     pub fn to_string(&self) -> String {
         match self {
             Stmt::Expr(expr) => {
-                expr.to_string()
+                format!("{};", expr.to_string())
             },
             Stmt::Let(ident_name, expr) => {
-                format!("let {:?} = {}", ident_name, expr.to_string())
+                format!("let {} = {};", ident_name.to_string(), expr.to_string())
+            },
+            Stmt::Return(expr) => {
+                format!("return {};", expr.to_string())
             },
             _ => todo!()
         }
@@ -53,6 +58,9 @@ impl Expr {
                     }
                 }
                 fmt
+            },
+            Expr::Literal(literal) => {
+                format!("{}", literal.to_string())
             },
             Expr::Ident(ident) => {
                 format!("{}", ident.0)
@@ -121,6 +129,12 @@ impl Literal {
     }
 }
 
+impl Ident {
+    pub fn to_string(&self) -> String {
+        self.0.to_owned()
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -141,6 +155,48 @@ mod tests {
     fn format(input: &str) -> String {
         let mut program = Parser::new(Lexer::new(input)).parse();
         program[0].to_string()
+    }
+
+
+    #[test]
+    fn test_let_stmt_format() {
+        let tests = vec![
+            ("let a = 3", "let a = 3;"),
+            (" let a=  3", "let a = 3;"),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, format(input));
+        }
+    }
+
+
+    #[test]
+    fn test_literal_format() {
+        let tests = vec![
+            ("1000", "1000;"),
+            ("\"foo\"", "\"foo\";"),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, format(input));
+        }
+    }
+
+
+    #[test]
+    fn test_return_format() {
+        let tests = vec![
+            ("return   100", "return 100;"),
+            ("return [100,100]", "return [100, 100];"),
+            ("return [\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]", r#"return [
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+];"#),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, format(input));
+        }
     }
 
 
