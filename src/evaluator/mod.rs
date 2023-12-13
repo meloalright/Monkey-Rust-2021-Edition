@@ -630,6 +630,7 @@ mod tests {
     use crate::lexer::Lexer;
     use crate::parser::Parser;
     use std::cell::RefCell;
+    use crate::formatter::Formatter;
     use std::rc::Rc;
 
     fn eval(input: &str) -> Option<object::Object> {
@@ -646,6 +647,16 @@ mod tests {
         };
         evaluator.expand_macros(&mut program);
         program
+    }
+
+    fn expand_which_stmt(input: &str, stmt_index: usize) -> String {
+        let mut program = Parser::new(Lexer::new(input)).parse();
+        let mut evaluator = Evaluator {
+            env: Rc::new(RefCell::new(env::Env::from(new_builtins()))),
+        };
+        evaluator.expand_macros(&mut program);
+        let mut formatter = Formatter::default();
+        formatter.format(vec![program[stmt_index].to_owned()])
     }
 
     /// cases in edition 2015
@@ -1333,8 +1344,8 @@ infixExpression();
         "#;
 
         assert_eq!(
-            "(1 + 2)",
-             expand(input)[1].to_string()
+            "1 + 2;",
+            expand_which_stmt(input, 1)
         );
     }
 
@@ -1347,8 +1358,8 @@ reverse(2 + 2, 10 - 5);
 "#;
 
         assert_eq!(
-            "((10 - 5) - (2 + 2))",
-            expand(input)[1].to_string(),
+            "(10 - 5) - (2 + 2);",
+            expand_which_stmt(input, 1),
         );
 
     }
@@ -1368,8 +1379,8 @@ unless(10 > 5, puts("not greater"), puts("greater"));
 
 
         assert_eq!(
-            "if (!(10 > 5)) { puts(\"not greater\");  }else { puts(\"greater\");  }",
-            expand(input)[1].to_string(),
+            "if (!(10 > 5)) {\n  puts(\"not greater\");\n} else {\n  puts(\"greater\");\n};",
+            expand_which_stmt(input, 1),
         );
     }
 }
