@@ -24,8 +24,7 @@ impl Formatter {
 
     pub fn format_block_stmt(&mut self, stmts: BlockStmt) -> String {
         let mut result = String::new();
-        // normalize
-        let list = stmts;
+        let list = Self::normalize_block_stmt(stmts);
 
         for (i, stmt) in list.into_iter().enumerate() {
             self.column = self.indent * 2 + 1;
@@ -53,6 +52,24 @@ impl Formatter {
 
         "  ".repeat(size as usize)
     }
+    
+    fn normalize_block_stmt(stmts: BlockStmt) -> BlockStmt {
+        stmts
+            .iter()
+            .enumerate()
+            .filter_map(|(i, x)| {
+                if i == 0 && *x == Stmt::Blank {
+                    None
+                } else if i + 1 == stmts.len() && *x == Stmt::Blank {
+                    None
+                } else if i > 0 && *x == Stmt::Blank && stmts.get(i - 1) == Some(&Stmt::Blank) {
+                    None
+                } else {
+                    Some(x.clone())
+                }
+            })
+            .collect::<Vec<_>>()
+    }
 }
 
 // expr format processor
@@ -61,14 +78,14 @@ impl Formatter {
 
     fn format_stmt(&mut self, stmt: Stmt) -> String {
         match stmt {
-            // Stmt::Let(ident, expr) => self.format_let_stmt(ident, expr),
-            // Stmt::Return(expr) => self.format_return_stmt(expr),
+            Stmt::Let(ident, expr) => self.format_let_stmt(ident, expr),
+            Stmt::Return(expr) => self.format_return_stmt(expr),
             Stmt::Expr(expr) => {
-                // if Self::ignore_semicolon_expr(&expr) {
-                    // self.format_expr(expr, Precedence::Lowest)
-                // } else {
+                if Self::ignore_semicolon_expr(&expr) {
+                    self.format_expr(expr, Precedence::Lowest)
+                } else {
                     format!("{};", self.format_expr(expr, Precedence::Lowest))
-                // }
+                }
             }
             Stmt::Blank => String::new(),
             _ => todo!()
@@ -112,7 +129,7 @@ impl Formatter {
         let left_str = self.format_expr(*left, current_precedence.clone());
         let right_str = self.format_expr(*right, current_precedence.clone());
 
-        if precedence >= current_precedence {
+        if precedence > current_precedence {
             format!("({} {} {})", left_str, infix, right_str)
         } else {
             format!("{} {} {}", left_str, infix, right_str)
@@ -154,6 +171,19 @@ impl Formatter {
         let Ident(ident_str) = ident;
         self.column += ident_str.len();
         ident_str
+    }
+
+    // If and Function should no suffix semicolon
+    fn ignore_semicolon_expr(expr: &Expr) -> bool {
+        match expr {
+            &Expr::If {
+                cond: _,
+                consequence: _,
+                alternative: _,
+            }
+            | &Expr::Function { params: _, body: _ } => true,
+            _ => false,
+        }
     }
 }
 
@@ -223,6 +253,314 @@ impl Formatter {
             Infix::LT | Infix::LTEQ => Precedence::LessGreater,
             Infix::GT | Infix::GTEQ => Precedence::LessGreater,
             Infix::Equal | Infix::NotEqual => Precedence::Equals,
+        }
+    }
+}
+
+// let format precessor
+impl Formatter {
+
+    fn format_let_stmt(&mut self, ident: Ident, expr: Expr) -> String {
+        let ident_str = self.format_ident_expr(ident);
+        let result = String::from(format!("let {} = ", ident_str));
+
+        self.column += result.len();
+
+        let expr_str = self.format_expr(expr, Precedence::Lowest);
+
+        format!("{}{};", result, expr_str)
+    }
+}
+
+// return format processor
+impl Formatter {
+
+    fn format_return_stmt(&mut self, expr: Expr) -> String {
+        let result = String::from("return ");
+
+        self.column += result.len();
+
+        format!("{}{};", result, self.format_expr(expr, Precedence::Lowest))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Formatter;
+    use crate::parser::Parser;
+    use crate::lexer::Lexer;
+
+    fn format(input: &str) -> String {
+        Formatter::default().format(Parser::new(Lexer::new(input)).parse())
+    }
+
+    #[test]
+    fn test_blank() {
+        let tests = vec![
+            (
+                r#"1000;
+
+1000;
+
+
+1000;
+
+
+
+1000;"#,
+                r#"1000;
+
+1000;
+
+1000;
+
+1000;"#,
+            ),
+            (
+                r#"if (x) {
+
+  1000;
+
+
+  1000;
+
+}"#,
+                r#"if (x) {
+  1000;
+
+  1000;
+}"#,
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
+
+    #[test]
+    fn test_literal() {
+        let tests = vec![
+            ("1000", "1000;"),
+            ("\"foo\"", "\"foo\";"),
+            ("true", "true;"),
+            ("false", "false;"),
+            // (
+            //     "[ 0 , 1  ,  \"str\",true  ,   false    ]",
+            //     "[0, 1, \"str\", true, false];",
+            // ),
+//             (
+//                 "[123456789, 123456789, 123456789, 123456789, 123456789, 123456789, 123456789, 123456789, 123456789]",
+//                 r#"[
+//   123456789,
+//   123456789,
+//   123456789,
+//   123456789,
+//   123456789,
+//   123456789,
+//   123456789,
+//   123456789,
+//   123456789
+// ];"#,
+//             ),
+//             (
+//                 "[\"124567890124567890124567890124567890124567890124567890124567890124567890124567890\"]",
+//                 r#"[
+//   "124567890124567890124567890124567890124567890124567890124567890124567890124567890"
+// ];"#,
+//             ),
+//             (
+//                 "{      \"key\"   : \"value\"}",
+//                 "{ \"key\": \"value\" };",
+//             ),
+//             (
+//                 "{1:1, 2:2, 3:3}",
+//                 "{ 1: 1, 2: 2, 3: 3 };",
+//             ),
+//             (
+//                 "{1:1, 2:2, 3:3, 4:4}",
+//                 r#"{
+//   1: 1,
+//   2: 2,
+//   3: 3,
+//   4: 4
+// };"#,
+//             ),
+//             (
+//                 "{\"123456789123456789123456789123456789123456789123456789123456789123456789\": true}",
+//                 r#"{
+//   "123456789123456789123456789123456789123456789123456789123456789123456789": true
+// };"#,
+//             ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
+
+
+    #[test]
+    fn test_let_stmt() {
+        let tests = vec![
+            ("let    foo= 1000", "let foo = 1000;"),
+            // (
+            //     "let    test        =    \"string\"",
+            //     "let test = \"string\";",
+            // ),
+//             (
+//                 "let   hoge =[0,1, 2 ,3  ]",
+//                 "let hoge = [0, 1, 2, 3];",
+//             ),
+//             (
+//                 "let abcdefghij = [12345678, 12345678, 12345678, 12345678, 12345678, 12345678, 1234];",
+//                 r#"let abcdefghij = [
+//   12345678,
+//   12345678,
+//   12345678,
+//   12345678,
+//   12345678,
+//   12345678,
+//   1234
+// ];"#,
+//             ),
+//             (
+//                 "let aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa = {\"fooo\": \"abcdefg\"};",
+//                 r#"let aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa = {
+//   "fooo": "abcdefg"
+// };"#
+//             ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
+
+
+    #[test]
+    fn test_return_stmt() {
+        let tests = vec![
+            ("return   100", "return 100;"),
+//             ("return [100,100]", "return [100, 100];"),
+//             ("return [\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]", r#"return [
+//   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+// ];"#),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
+
+
+    #[test]
+    fn test_operator() {
+        let tests = vec![
+            // infix
+            ("1+1", "1 + 1;"),
+            ("(2+    2)", "2 + 2;"),
+            ("(2 + 2)   * 5", "(2 + 2) * 5;"),
+            ("2/(5+5  )", "2 / (5 + 5);"),
+            ("2   / 5+5  ", "2 / 5 + 5;"),
+            // prefix
+            ("-  5", "-5;"),
+            ("! true", "!true;"),
+            ("-(  4*    5   )", "-(4 * 5);"),
+            ("!((10-2)  / 4)", "!((10 - 2) / 4);"),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
+
+
+
+
+    // expr precedence format
+    #[test]
+    fn test_expr_format() {
+        let tests = vec![
+            ("-a * b", "-a * b;"),
+            ("!-a", "!-a;"),
+            ("a + b + c", "a + b + c;"),
+            (
+                "a + b - c",
+                "a + b - c;",
+            ),
+            (
+                "a * b * c",
+                "a * b * c;",
+            ),
+            (
+                "a * b / c",
+                "a * b / c;",
+            ),
+            (
+                "a + b / c",
+                "a + b / c;",
+            ),
+            (
+                "a + b * c + d / e - f",
+                "a + b * c + d / e - f;",
+            ),
+            (
+                "3 + 4; -5 * 5",
+                "3 + 4;\n-5 * 5;",
+            ),
+            (
+                "5 > 4 == 3 < 4",
+                "5 > 4 == 3 < 4;",
+            ),
+            (
+                "5 < 4 != 3 > 4",
+                "5 < 4 != 3 > 4;",
+            ),
+            (
+                "3 + 4 * 5 == 3 * 1 + 4 * 5",
+                "3 + 4 * 5 == 3 * 1 + 4 * 5;",
+            ),
+            (
+                "true",
+                "true;",
+            ),
+            (
+                "false",
+                "false;",
+            ),
+            (
+                "3 > 5 == false",
+                "3 > 5 == false;",
+            ),
+            (
+                "3 < 5 == true",
+                "3 < 5 == true;",
+            ),
+            (
+                "a + add(b * c) + d",
+                "a + add(b * c) + d;",
+            ),
+            (
+                "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
+                "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8));",
+            ),
+            (
+                "add(a + b + c * d / f + g)",
+                "add(a + b + c * d / f + g);",
+            ),
+            // (
+            //     "a * [1, 2, 3, 4][b * c] * d",
+            //     "a * [1, 2, 3, 4][b * c] * d;",
+            // ),
+            // (
+            //     "add(a * b[2], b[1], 2 * [1, 2][1])",
+            //     "add(a * b[2], b[1], 2 * [1, 2][1]);",
+            // ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, format(input));
         }
     }
 }

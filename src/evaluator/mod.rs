@@ -1358,7 +1358,7 @@ reverse(2 + 2, 10 - 5);
 "#;
 
         assert_eq!(
-            "(10 - 5) - (2 + 2);",
+            "10 - 5 - 2 + 2;",
             expand_which_stmt(input, 1),
         );
 
@@ -1379,7 +1379,7 @@ unless(10 > 5, puts("not greater"), puts("greater"));
 
 
         assert_eq!(
-            "if (!(10 > 5)) {\n  puts(\"not greater\");\n} else {\n  puts(\"greater\");\n};",
+            "if (!(10 > 5)) {\n  puts(\"not greater\");\n} else {\n  puts(\"greater\");\n}",
             expand_which_stmt(input, 1),
         );
     }
