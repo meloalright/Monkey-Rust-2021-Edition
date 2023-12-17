@@ -142,9 +142,9 @@ impl Formatter {
             Literal::Int(value) => self.format_int_literal(value),
             Literal::String(value) => self.format_string_literal(value),
             Literal::Bool(value) => self.format_bool_literal(value),
+            Literal::Array(value) => self.format_array_literal(value, false), // format array default wrap false first then it will wrap true if chars are too much
+            Literal::Hash(value) => self.format_hash_literal(value, false),
             _ => todo!()
-            // Literal::Array(value) => self.format_array_literal(value, false),
-            // Literal::Hash(value) => self.format_hash_literal(value, false),
         }
     }
 
@@ -187,6 +187,110 @@ impl Formatter {
     }
 }
 
+// array format preocessor
+impl Formatter {
+
+    fn format_array_literal(&mut self, arr: Vec<Expr>, wrap: bool) -> String {
+        let mut result = String::new();
+        let original = arr.clone();
+        let total = original.len();
+
+        if wrap {
+            self.indent += 1;
+        }
+
+        for (i, expr) in arr.into_iter().enumerate() {
+            let expr_str = self.format_expr(expr, Precedence::Lowest);
+
+            if wrap {
+                if i == 0 {
+                    result.push_str("\n");
+                } else {
+                    result.push_str(",\n");
+                }
+
+                result.push_str(&format!("{}{}", self.indent_str(0), expr_str));
+
+                if i + 1 == total {
+                    self.indent -= 1;
+                    result.push_str(&format!("\n{}", self.indent_str(0)));
+                }
+            } else {
+                if i > 0 {
+                    result.push_str(&format!(", {}", expr_str));
+                } else {
+                    result.push_str(&expr_str);
+                }
+            }
+        }
+
+        if !wrap && self.column + result.len() + 2 > self.max_one_line_chars {
+            return self.format_array_literal(original, true);
+        }
+
+        format!("[{}]", result)
+    }
+}
+
+
+// hash format preocessor
+impl Formatter {
+
+    fn format_hash_literal(&mut self, hash: Vec<(Expr, Expr)>, wrap: bool) -> String {
+        let mut result = String::new();
+        let original = hash.clone();
+        let total = original.len();
+
+        if !wrap && total > self.max_one_line_hash {
+            return self.format_hash_literal(original, true);
+        }
+
+        if wrap {
+            self.indent += 1;
+        }
+
+        for (i, (key, value)) in hash.into_iter().enumerate() {
+            let key_str = self.format_expr(key, Precedence::Lowest);
+            let value_str = self.format_expr(value, Precedence::Lowest);
+
+            if wrap {
+                if i > 0 {
+                    result.push_str(",");
+                }
+
+                result.push_str(&format!(
+                    "\n{}{}: {}",
+                    self.indent_str(0),
+                    key_str,
+                    value_str
+                ));
+
+                if i + 1 == total {
+                    self.indent -= 1;
+                    result.push_str(&format!("\n{}", self.indent_str(0)));
+                }
+            } else {
+                if i == 0 {
+                    result.push_str(" ");
+                } else {
+                    result.push_str(", ");
+                }
+
+                result.push_str(&format!("{}: {}", key_str, value_str));
+
+                if i + 1 == total {
+                    result.push_str(" ");
+                }
+            }
+        }
+
+        if !wrap && self.column + result.len() > self.max_one_line_chars {
+            return self.format_hash_literal(original, true);
+        }
+
+        format!("{{{}}}", result)
+    }
+}
 
 // condition format processor
 impl Formatter {
@@ -345,53 +449,53 @@ mod tests {
             ("\"foo\"", "\"foo\";"),
             ("true", "true;"),
             ("false", "false;"),
-            // (
-            //     "[ 0 , 1  ,  \"str\",true  ,   false    ]",
-            //     "[0, 1, \"str\", true, false];",
-            // ),
-//             (
-//                 "[123456789, 123456789, 123456789, 123456789, 123456789, 123456789, 123456789, 123456789, 123456789]",
-//                 r#"[
-//   123456789,
-//   123456789,
-//   123456789,
-//   123456789,
-//   123456789,
-//   123456789,
-//   123456789,
-//   123456789,
-//   123456789
-// ];"#,
-//             ),
-//             (
-//                 "[\"124567890124567890124567890124567890124567890124567890124567890124567890124567890\"]",
-//                 r#"[
-//   "124567890124567890124567890124567890124567890124567890124567890124567890124567890"
-// ];"#,
-//             ),
-//             (
-//                 "{      \"key\"   : \"value\"}",
-//                 "{ \"key\": \"value\" };",
-//             ),
-//             (
-//                 "{1:1, 2:2, 3:3}",
-//                 "{ 1: 1, 2: 2, 3: 3 };",
-//             ),
-//             (
-//                 "{1:1, 2:2, 3:3, 4:4}",
-//                 r#"{
-//   1: 1,
-//   2: 2,
-//   3: 3,
-//   4: 4
-// };"#,
-//             ),
-//             (
-//                 "{\"123456789123456789123456789123456789123456789123456789123456789123456789\": true}",
-//                 r#"{
-//   "123456789123456789123456789123456789123456789123456789123456789123456789": true
-// };"#,
-//             ),
+            (
+                "[ 0 , 1  ,  \"str\",true  ,   false    ]",
+                "[0, 1, \"str\", true, false];",
+            ),
+            (
+                "[123456789, 123456789, 123456789, 123456789, 123456789, 123456789, 123456789, 123456789, 123456789]",
+                r#"[
+  123456789,
+  123456789,
+  123456789,
+  123456789,
+  123456789,
+  123456789,
+  123456789,
+  123456789,
+  123456789
+];"#,
+            ),
+            (
+                "[\"124567890124567890124567890124567890124567890124567890124567890124567890124567890\"]",
+                r#"[
+  "124567890124567890124567890124567890124567890124567890124567890124567890124567890"
+];"#,
+            ),
+            (
+                "{      \"key\"   : \"value\"}",
+                "{ \"key\": \"value\" };",
+            ),
+            (
+                "{1:1, 2:2, 3:3}",
+                "{ 1: 1, 2: 2, 3: 3 };",
+            ),
+            (
+                "{1:1, 2:2, 3:3, 4:4}",
+                r#"{
+  1: 1,
+  2: 2,
+  3: 3,
+  4: 4
+};"#,
+            ),
+            (
+                "{\"123456789123456789123456789123456789123456789123456789123456789123456789\": true}",
+                r#"{
+  "123456789123456789123456789123456789123456789123456789123456789123456789": true
+};"#,
+            ),
         ];
 
         for (input, expect) in tests {
@@ -404,32 +508,32 @@ mod tests {
     fn test_let_stmt() {
         let tests = vec![
             ("let    foo= 1000", "let foo = 1000;"),
-            // (
-            //     "let    test        =    \"string\"",
-            //     "let test = \"string\";",
-            // ),
-//             (
-//                 "let   hoge =[0,1, 2 ,3  ]",
-//                 "let hoge = [0, 1, 2, 3];",
-//             ),
-//             (
-//                 "let abcdefghij = [12345678, 12345678, 12345678, 12345678, 12345678, 12345678, 1234];",
-//                 r#"let abcdefghij = [
-//   12345678,
-//   12345678,
-//   12345678,
-//   12345678,
-//   12345678,
-//   12345678,
-//   1234
-// ];"#,
-//             ),
-//             (
-//                 "let aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa = {\"fooo\": \"abcdefg\"};",
-//                 r#"let aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa = {
-//   "fooo": "abcdefg"
-// };"#
-//             ),
+            (
+                "let    test        =    \"string\"",
+                "let test = \"string\";",
+            ),
+            (
+                "let   hoge =[0,1, 2 ,3  ]",
+                "let hoge = [0, 1, 2, 3];",
+            ),
+            (
+                "let abcdefghij = [12345678, 12345678, 12345678, 12345678, 12345678, 12345678, 1234];",
+                r#"let abcdefghij = [
+  12345678,
+  12345678,
+  12345678,
+  12345678,
+  12345678,
+  12345678,
+  1234
+];"#,
+            ),
+            (
+                "let aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa = {\"fooo\": \"abcdefg\"};",
+                r#"let aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa = {
+  "fooo": "abcdefg"
+};"#
+            ),
         ];
 
         for (input, expect) in tests {
@@ -442,10 +546,10 @@ mod tests {
     fn test_return_stmt() {
         let tests = vec![
             ("return   100", "return 100;"),
-//             ("return [100,100]", "return [100, 100];"),
-//             ("return [\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]", r#"return [
-//   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-// ];"#),
+            ("return [100,100]", "return [100, 100];"),
+            ("return [\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]", r#"return [
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+];"#),
         ];
 
         for (input, expect) in tests {
