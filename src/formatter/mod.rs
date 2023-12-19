@@ -100,13 +100,13 @@ impl Formatter {
             Expr::Infix(infix, left, right) => {
                 self.format_infix_expr(infix, left, right, precedence)
             }
-            // Expr::Index(left, index) => self.format_index_expr(left, index),
+            Expr::Index(left, index) => self.format_index_expr(left, index),
             Expr::If {
                 cond,
                 consequence,
                 alternative,
             } => self.format_if_expr(cond, consequence, alternative),
-            // Expr::Func { params, body } => self.format_func_expr(params, body),
+            Expr::Function { params, body } => self.format_func_expr(params, body),
             Expr::Call { func, args } => self.format_call_expr(func, args),
             other => format!("{:?}", other)
         }
@@ -292,6 +292,17 @@ impl Formatter {
     }
 }
 
+// index format processor
+impl Formatter {
+
+    fn format_index_expr(&mut self, left: Box<Expr>, index: Box<Expr>) -> String {
+        let left_str = self.format_expr(*left, Precedence::Lowest);
+        let index_str = self.format_expr(*index, Precedence::Lowest);
+
+        format!("{}[{}]", left_str, index_str)
+    }
+}
+
 // condition format processor
 impl Formatter {
     fn format_if_expr(
@@ -327,6 +338,34 @@ impl Formatter {
         self.indent -= 1;
 
         result
+    }
+}
+
+impl Formatter {
+    // function format processor
+    fn format_func_expr(&mut self, params: Vec<Ident>, body: BlockStmt) -> String {
+        let mut params_str = String::new();
+
+        for (i, param) in params.into_iter().enumerate() {
+            if i > 0 {
+                params_str.push_str(", ");
+            }
+
+            params_str.push_str(&self.format_ident_expr(param));
+        }
+
+        self.indent += 1;
+
+        let body_str = self.format_block_stmt(body);
+
+        self.indent -= 1;
+
+        format!(
+            "fn({}) {{\n{}\n{}}}",
+            params_str,
+            body_str,
+            self.indent_str(0)
+        )
     }
 }
 
@@ -579,8 +618,156 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_index_expr() {
+        let tests = vec![
+            ("foo[ 0  ]", "foo[0];"),
+            ("foo[   1*2 ]", "foo[1 * 2];"),
+            ("foo [   \"key\" ]", "foo[\"key\"];"),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
 
 
+    #[test]
+    fn test_if_expr() {
+        let tests = vec![
+            (
+                "if(x){x}",
+                r#"if (x) {
+  x;
+}"#,
+            ),
+            (
+                "if(x){true}else{false}",
+                r#"if (x) {
+  true;
+} else {
+  false;
+}"#,
+            ),
+            (
+                r#"if (x) {
+  let arr = [123456789, 123456789, 123456789, 123456789, 123456789, 123456789, 123456789];
+  let obj = {"keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeey": "valueeeeeeeeeeeeeeeeeeeeeeee"};
+}"#,
+                r#"if (x) {
+  let arr = [
+    123456789,
+    123456789,
+    123456789,
+    123456789,
+    123456789,
+    123456789,
+    123456789
+  ];
+  let obj = {
+    "keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeey": "valueeeeeeeeeeeeeeeeeeeeeeee"
+  };
+}"#,
+            ),
+            (
+                r#"if(x){
+if(         y){if(z)        { z; }}
+}"#,
+                r#"if (x) {
+  if (y) {
+    if (z) {
+      z;
+    }
+  }
+}"#,
+            ),
+            (
+                r#"if(x){if(y){if(z){z;}}else{if(z){z;}}}else{if(y){if(z){z;}}else{if(z){z; }
+}
+}"#,
+                r#"if (x) {
+  if (y) {
+    if (z) {
+      z;
+    }
+  } else {
+    if (z) {
+      z;
+    }
+  }
+} else {
+  if (y) {
+    if (z) {
+      z;
+    }
+  } else {
+    if (z) {
+      z;
+    }
+  }
+}"#,
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
+
+    #[test]
+    fn test_func_expr() {
+        let tests = vec![
+            (
+                "fn (  x ){     x}",
+                r#"fn(x) {
+  x;
+}"#,
+            ),
+            (
+                r#"fn   (x)        {
+fn    (y) {y;}
+}"#,
+                r#"fn(x) {
+  fn(y) {
+    y;
+  }
+}"#,
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
+
+    #[test]
+    fn test_call_expr() {
+        let tests = vec![
+            ("foo(    x)", "foo(x);"),
+            ("foo(1 *        1)", "foo(1 * 1);"),
+            ("foo((2 * 2 * 2))", "foo(2 * 2 * 2);"),
+            ("foo(x,y,z)", "foo(x, y, z);"),
+            ("arr[  \"hoge\" ](x,y,z)", "arr[\"hoge\"](x, y, z);"),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
+
+    #[test]
+    fn test_block_stmt() {
+        let tests = vec![(
+            "1000; 1000; 1000;",
+            r#"1000;
+1000;
+1000;"#,
+        )];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
 
     // expr precedence format
     #[test]
