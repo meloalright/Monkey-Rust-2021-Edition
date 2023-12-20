@@ -112,7 +112,7 @@ impl Formatter {
             Expr::Function { params, body } => self.format_func_expr(params, body),
             Expr::Call { func, args } => self.format_call_expr(func, args),
             Expr::While { cond, consequence } => todo!(),
-            Expr::Macro { params, body } => todo!(),
+            Expr::Macro { params, body } => self.format_macro_expr(params, body),
         }
     }
 
@@ -365,6 +365,32 @@ impl Formatter {
 
         format!(
             "fn({}) {{\n{}\n{}}}",
+            params_str,
+            body_str,
+            self.indent_str(0)
+        )
+    }
+
+    // macro format processor
+    fn format_macro_expr(&mut self, params: Vec<Ident>, body: BlockStmt) -> String {
+        let mut params_str = String::new();
+
+        for (i, param) in params.into_iter().enumerate() {
+            if i > 0 {
+                params_str.push_str(", ");
+            }
+
+            params_str.push_str(&self.format_ident_expr(param));
+        }
+
+        self.indent += 1;
+
+        let body_str = self.format_block_stmt(body);
+
+        self.indent -= 1;
+
+        format!(
+            "macro({}) {{\n{}\n{}}}",
             params_str,
             body_str,
             self.indent_str(0)

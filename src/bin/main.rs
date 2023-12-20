@@ -32,6 +32,7 @@ fn main() {
                     continue;
                 }
 
+                evaluator.define_macros(&mut program);
                 evaluator.expand_macros(&mut program);
                 if let Some(evaluated) = evaluator.eval(&program) {
                     println!("{}\n", evaluated);

@@ -55,13 +55,23 @@ impl Evaluator {
         }
     }
 
-    pub fn expand_macros(&mut self, program: &mut ast::Program) -> () {
-        for stmt in program.iter_mut() {
+    // add macro to env and filter out the macro define statement
+    pub fn define_macros(&mut self, program: &mut ast::Program) -> () {
+        let mut definition_indexes: Vec<usize> = vec![];
+        for (i, stmt) in program.iter_mut().enumerate() {
             if let ast::Stmt::Let(ident, ref mut expr) = stmt {
                 if let ast::Expr::Macro { params, body } = expr {
-                    self.env.borrow_mut().set(ident.0.clone(), object::Object::Macro(params.to_owned(), body.to_owned(), Rc::clone(&self.env)))
+                    self.env.borrow_mut().set(ident.0.clone(), object::Object::Macro(params.to_owned(), body.to_owned(), Rc::clone(&self.env)));
+                    definition_indexes.push(i);
                 }
             }
+        }
+        *program = program.iter().enumerate().filter(|&(i, _)| { !definition_indexes.contains(&i) }).map(|(i, stmt)| { stmt.clone() }).collect();
+    }
+
+    pub fn expand_macros(&mut self, program: &mut ast::Program) -> () {
+        for stmt in program.iter_mut() {
+
             ast::modify(stmt, |expr| {
 
                 self.modifer(expr);
@@ -98,88 +108,52 @@ impl Evaluator {
 
 #[cfg(test)]
 mod tests {
-    use super::object;
     use super::Evaluator;
-    use crate::ast;
     use crate::evaluator::env;
     use crate::evaluator::builtins::new_builtins;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
-    use std::cell::RefCell;
     use crate::formatter::Formatter;
     use std::rc::Rc;
+    use std::cell::RefCell;
 
-    fn expand(input: &str) -> Vec<ast::Stmt> {
+    fn expand_macros_and_format(input: &str) -> String {
         let mut program = Parser::new(Lexer::new(input)).parse();
         let mut evaluator = Evaluator {
             env: Rc::new(RefCell::new(env::Env::from(new_builtins()))),
         };
-        evaluator.expand_macros(&mut program);
-        program
-    }
-
-    fn expand_which_stmt(input: &str, stmt_index: usize) -> String {
-        let mut program = Parser::new(Lexer::new(input)).parse();
-        let mut evaluator = Evaluator {
-            env: Rc::new(RefCell::new(env::Env::from(new_builtins()))),
-        };
-        evaluator.expand_macros(&mut program);
         let mut formatter = Formatter::default();
-        formatter.format(vec![program[stmt_index].to_owned()])
+        evaluator.define_macros(&mut program);
+        evaluator.expand_macros(&mut program);
+        formatter.format(program.to_owned())
     }
 
     #[test]
     fn test_macro_expand_quote() {
         let input = r#"
-let a = macro() { quote(1+1) };
-let c = 1+a()
+        let infixExpression = macro() { quote(1 + 2); };
+
+        infixExpression();
         "#;
 
         assert_eq!(
-            "[Let(Ident(\"a\"), Macro { params: [], body: [Expr(Call { func: Ident(Ident(\"quote\")), args: [Infix(Plus, Literal(Int(1)), Literal(Int(1)))] })] }), Let(Ident(\"c\"), Infix(Plus, Literal(Int(1)), Infix(Plus, Literal(Int(1)), Literal(Int(1)))))]",
-            format!("{:?}", expand(input))
+            "1 + 2;",
+            expand_macros_and_format(input)
         );
     }
 
     #[test]
     fn test_macro_expand_unquote() {
         let input = r#"
-let a = macro() { quote(1+1+unquote(1+1)) };
-let c = 1+a()
+        let reverse = macro(a, b) { quote(unquote(b) - unquote(a)); };
+
+        reverse(2 + 2, 10 - 5);
         "#;
-
-        assert_eq!(
-            "[Let(Ident(\"a\"), Macro { params: [], body: [Expr(Call { func: Ident(Ident(\"quote\")), args: [Infix(Plus, Infix(Plus, Literal(Int(1)), Literal(Int(1))), Call { func: Ident(Ident(\"unquote\")), args: [Infix(Plus, Literal(Int(1)), Literal(Int(1)))] })] })] }), Let(Ident(\"c\"), Infix(Plus, Literal(Int(1)), Infix(Plus, Infix(Plus, Literal(Int(1)), Literal(Int(1))), Literal(Int(2)))))]",
-            format!("{:?}", expand(input))
-        );
-    }
-
-    #[test]
-    fn test_macro_expand_infix_expression() {
-        let input = r#"
-let infixExpression = macro() { quote(1 + 2); };
-infixExpression();
-        "#;
-
-        assert_eq!(
-            "1 + 2;",
-            expand_which_stmt(input, 1)
-        );
-    }
-
-
-    #[test]
-    fn test_macro_expand_expr_args() {
-        let input = r#"
-let reverse = macro(a, b) { quote(unquote(b) - unquote(a)); };
-reverse(2 + 2, 10 - 5);
-"#;
 
         assert_eq!(
             "10 - 5 - 2 + 2;",
-            expand_which_stmt(input, 1),
+            expand_macros_and_format(input)
         );
-
     }
 
     #[test]
@@ -198,7 +172,7 @@ unless(10 > 5, puts("not greater"), puts("greater"));
 
         assert_eq!(
             "if (!(10 > 5)) {\n  puts(\"not greater\");\n} else {\n  puts(\"greater\");\n}",
-            expand_which_stmt(input, 1),
+            expand_macros_and_format(input)
         );
     }
 }
