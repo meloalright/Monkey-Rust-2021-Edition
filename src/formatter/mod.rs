@@ -79,6 +79,8 @@ impl Formatter {
     fn format_stmt(&mut self, stmt: Stmt) -> String {
         match stmt {
             Stmt::Let(ident, expr) => self.format_let_stmt(ident, expr),
+            Stmt::Const(ident, expr) => todo!(),
+            Stmt::ReAssign(ident, expr) => todo!(),
             Stmt::Return(expr) => self.format_return_stmt(expr),
             Stmt::Expr(expr) => {
                 if Self::ignore_semicolon_expr(&expr) {
@@ -88,7 +90,8 @@ impl Formatter {
                 }
             }
             Stmt::Blank => String::new(),
-            _ => todo!()
+            Stmt::Break => String::from("break;"),
+            Stmt::Continue => String::from("continue;"),
         }
     }
 
@@ -108,7 +111,8 @@ impl Formatter {
             } => self.format_if_expr(cond, consequence, alternative),
             Expr::Function { params, body } => self.format_func_expr(params, body),
             Expr::Call { func, args } => self.format_call_expr(func, args),
-            other => format!("{:?}", other)
+            Expr::While { cond, consequence } => todo!(),
+            Expr::Macro { params, body } => todo!(),
         }
     }
 
@@ -144,7 +148,6 @@ impl Formatter {
             Literal::Bool(value) => self.format_bool_literal(value),
             Literal::Array(value) => self.format_array_literal(value, false), // format array default wrap false first then it will wrap true if chars are too much
             Literal::Hash(value) => self.format_hash_literal(value, false),
-            _ => todo!()
         }
     }
 
@@ -840,14 +843,14 @@ fn    (y) {y;}
                 "add(a + b + c * d / f + g)",
                 "add(a + b + c * d / f + g);",
             ),
-            // (
-            //     "a * [1, 2, 3, 4][b * c] * d",
-            //     "a * [1, 2, 3, 4][b * c] * d;",
-            // ),
-            // (
-            //     "add(a * b[2], b[1], 2 * [1, 2][1])",
-            //     "add(a * b[2], b[1], 2 * [1, 2][1]);",
-            // ),
+            (
+                "a * [1, 2, 3, 4][b * c] * d",
+                "a * [1, 2, 3, 4][b * c] * d;",
+            ),
+            (
+                "add(a * b[2], b[1], 2 * [1, 2][1])",
+                "add(a * b[2], b[1], 2 * [1, 2][1]);",
+            ),
         ];
 
         for (input, expect) in tests {
