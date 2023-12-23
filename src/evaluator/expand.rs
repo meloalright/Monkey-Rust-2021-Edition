@@ -25,21 +25,13 @@ impl Evaluator {
 impl Evaluator {
 
     pub fn unquote(&mut self, expr: ast::Expr) -> ast::Expr {
-        let mut node = ast::Stmt::Expr(expr);
+        let node = ast::Stmt::Expr(expr.clone());
         let unquote = self.eval(&vec![node]);
         match unquote {
-            Some(object::Object::Int(x)) => ast::Expr::Literal(ast::Literal::Int(x)),
-            Some(object::Object::Bool(bool)) => ast::Expr::Literal(ast::Literal::Bool(bool)),
             Some(object::Object::Quote(ast::Stmt::Expr(in_quote_expr))) => {
                 in_quote_expr
             },
-            Some(object::Object::Null) => {
-                ast::Expr::Literal(ast::Literal::Int(-1))
-            },
-            _ => {
-                println!("debug what!!={:?}", unquote);
-                ast::Expr::Literal(ast::Literal::Int(-1))
-            }
+            _ => expr,
         }
     }
 
@@ -103,20 +95,12 @@ impl Evaluator {
     }
 
     pub fn inner_evaluate(&mut self, expr: &mut ast::Expr) {
-
         match expr {
             ast::Expr::Call { func, args } => {
                 if self.is_unquote_call(func.as_ref()) {
                     let unquote_expr = args.clone().to_vec()[0].to_owned();
                     *expr = self.unquote(unquote_expr);
                 }
-            },
-            ast::Expr::Infix(infix, left_expr, right_expr) => {
-                self.inner_evaluate(left_expr);
-                self.inner_evaluate(right_expr);
-            },
-            ast::Expr::Prefix(prefix, expr) => {
-                self.inner_evaluate(expr);
             },
             ast::Expr::If {cond, consequence, alternative } => {
                 self.inner_evaluate(cond);
@@ -125,9 +109,22 @@ impl Evaluator {
                     alternative.iter_mut().for_each(|stmt| { self.expand_inner(stmt) });
                 }
             },
-            _ => {
-                // todo
+            ast::Expr::While {cond, consequence } => {
+                self.inner_evaluate(cond);
+                consequence.iter_mut().for_each(|stmt| { self.expand_inner(stmt) });
+            },
+            ast::Expr::Infix(_, left_expr, right_expr) => {
+                self.inner_evaluate(left_expr);
+                self.inner_evaluate(right_expr);
+            },
+            ast::Expr::Prefix(_, expr) => {
+                self.inner_evaluate(expr);
+            },
+            ast::Expr::Index(left_expr, right_expr) => {
+                self.inner_evaluate(left_expr);
+                self.inner_evaluate(right_expr);
             }
+            _ => ()
         }
     }
 
