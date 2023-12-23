@@ -14,7 +14,9 @@ pub fn new_builtins() -> HashMap<String, Object> {
 
 
 fn monkey_puts(args: Vec<Object>) -> Object {
-    println!("{:?}", args[0]);
+    for arg in args {
+        println!("{}", arg);
+    }
     Object::Null
 }
 
@@ -164,5 +166,10 @@ mod tests {
         let args = vec![Object::Array(arr), Object::Int(3)];
         let expected = Object::Array(vec![Object::Int(1), Object::Int(2), Object::Int(3)]);
         assert_eq!(monkey_push(args), expected);
+    }
+
+    #[test]
+    fn test_monkey_puts() {
+        assert_eq!(monkey_puts(vec![Object::Int(1), Object::Int(2)]), Object::Null);
     }
 }

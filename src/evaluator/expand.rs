@@ -80,16 +80,31 @@ impl Evaluator {
 
 impl Evaluator {
 
-    pub fn modifer(&mut self, expr: &mut ast::Expr) {
+    fn is_macro_call(&mut self, expr: &mut ast::Expr) -> bool {
         if let ast::Expr::Call { func, args } = expr {
-            let mut quoted_args: Vec<ast::Expr> = vec![];
-            for arg in args.iter() {
-                let quoted_arg = ast::Expr::Call { func: Box::new(ast::Expr::Ident(ast::Ident("quote".to_owned()))), args: vec![arg.to_owned()] };
-                quoted_args.push(quoted_arg);
+            if let ast::Expr::Ident(func_name) = func.as_ref() {
+                if let Some(func_value) = self.env.borrow_mut().get(func_name.0.to_owned()) {
+                    if let object::Object::Macro(_, _, _) = func_value {
+                        return true;
+                    }
+                }
             }
-            let right_evaluated = self.eval(&vec![ast::Stmt::Expr(ast::Expr::Call { func: func.to_owned(), args: quoted_args.to_owned() })]);
-            if let Some(object::Object::Quote(ast::Stmt::Expr(right_expr))) = right_evaluated {
-                *expr = right_expr;
+        }
+        false
+    }
+
+    pub fn modifer(&mut self, expr: &mut ast::Expr) {
+        if self.is_macro_call(expr) {
+            if let ast::Expr::Call { func, args } = expr {
+                let mut quoted_args: Vec<ast::Expr> = vec![];
+                for arg in args.iter() {
+                    let quoted_arg = ast::Expr::Call { func: Box::new(ast::Expr::Ident(ast::Ident("quote".to_owned()))), args: vec![arg.to_owned()] };
+                    quoted_args.push(quoted_arg);
+                }
+                let right_evaluated = self.eval(&vec![ast::Stmt::Expr(ast::Expr::Call { func: func.to_owned(), args: quoted_args.to_owned() })]);
+                if let Some(object::Object::Quote(ast::Stmt::Expr(right_expr))) = right_evaluated {
+                    *expr = right_expr;
+                }
             }
         }
     }
@@ -197,6 +212,40 @@ unless(10 > 5, puts("not greater"), puts("greater"));
 
         assert_eq!(
             "if (!(10 > 5)) {\n  puts(\"not greater\");\n} else {\n  puts(\"greater\");\n}",
+            expand_macros_and_format(input)
+        );
+    }
+
+    #[test]
+    fn test_macro_expand_expr_while() {
+        let input = r#"
+let keep = macro(consequence, condition) {
+    quote(while (unquote(condition)) {
+        unquote(consequence);
+    });
+};
+keep(puts(a), a >= 10);
+        "#;
+
+
+        assert_eq!(
+            "while (a >= 10) {\n  puts(a);\n}",
+            expand_macros_and_format(input)
+        );
+    }
+
+    #[test]
+    fn test_macro_expand_expr_index() {
+        let input = r#"
+let sum_by_index = macro(list, index_left, index_right) {
+    quote(unquote(list)[unquote(index_left)] + unquote(list)[unquote(index_right)]);
+};
+sum_by_index([1, 2, 3], 1, 2);
+        "#;
+
+
+        assert_eq!(
+            "[1, 2, 3][1] + [1, 2, 3][2];",
             expand_macros_and_format(input)
         );
     }

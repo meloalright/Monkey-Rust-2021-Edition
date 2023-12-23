@@ -540,10 +540,15 @@ mod tests {
     use std::rc::Rc;
 
     fn eval(input: &str) -> Option<object::Object> {
-        Evaluator {
+        let lexer = Lexer::new(&input);
+        let mut parser = Parser::new(lexer);
+        let mut program = parser.parse();
+        let mut evaluator = Evaluator {
             env: Rc::new(RefCell::new(env::Env::from(new_builtins()))),
-        }
-        .eval(&Parser::new(Lexer::new(input)).parse())
+        };
+        evaluator.define_macros(&mut program);
+        evaluator.expand_macros(&mut program);
+        evaluator.eval(&mut program)
     }
 
     /// cases in edition 2015
