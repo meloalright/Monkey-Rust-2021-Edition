@@ -378,12 +378,8 @@ impl Evaluator {
 ///
 impl Evaluator {
     fn eval_call_expr(&mut self, func: &Box<ast::Expr>, args: &Vec<ast::Expr>) -> object::Object {
-        if let ast::Expr::Ident(ident_name) = func.as_ref() {
-            if ident_name.0 == "quote" {
-                let mut node = ast::Stmt::Expr(args[0].clone());
-                self.quote_and_eval_inner_unquote(&mut node);
-                return object::Object::Quote(node);
-            }
+        if self.is_quote_call(func.as_ref()) {
+            return self.quote(args[0].clone())
         }
 
         let args = args

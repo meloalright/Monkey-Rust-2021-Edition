@@ -6,54 +6,54 @@ use crate::evaluator::object;
 
 impl Evaluator {
 
-    pub fn quote_and_eval_inner_unquote(&mut self, stmt: &mut ast::Stmt) -> () {
-        ast::modify(stmt, |expr| {
-            self.unquote_modifier(expr);
-        });
+    pub fn quote(&mut self, expr: ast::Expr) -> object::Object {
+        let mut node = ast::Stmt::Expr(expr);
+        self.expand_inner(&mut node);
+        object::Object::Quote(node)
     }
 
-    pub fn unquote_modifier(&mut self, expr: &mut ast::Expr) {
-
+    pub fn is_quote_call(&mut self, expr: &ast::Expr) -> bool {
         match expr {
-            ast::Expr::Call { func, args } => {
-
-                if let ast::Expr::Ident(ident_name) = func.as_ref() {
-                    if ident_name.0 == "unquote" {
-                        let unquote_expr = args.clone().to_vec()[0].to_owned();
-                        let unquote = self.eval(&vec![ast::Stmt::Expr(unquote_expr)]);
-                        match unquote {
-                            Some(object::Object::Int(x)) => *expr = ast::Expr::Literal(ast::Literal::Int(x)),
-                            Some(object::Object::Bool(bool)) => *expr = ast::Expr::Literal(ast::Literal::Bool(bool)),
-                            Some(object::Object::Quote(ast::Stmt::Expr(in_quote_expr))) => {
-                                *expr = in_quote_expr
-                            },
-                            Some(object::Object::Null) => {
-                                *expr = ast::Expr::Literal(ast::Literal::Int(-1));
-                            },
-                            _ => {
-                                println!("debug what!!={:?}", expr);
-                            }
-                        }
-                    }
-                }
+            ast::Expr::Ident(ident_name) => {
+                ident_name.0 == "quote"
             },
-            ast::Expr::Infix(infix, left_expr, right_expr) => {
-                self.unquote_modifier(left_expr);
-                self.unquote_modifier(right_expr);
-            },
-            ast::Expr::Prefix(prefix, expr) => {
-                self.unquote_modifier(expr);
-            },
-            ast::Expr::If {cond, consequence, alternative } => {
-                self.unquote_modifier(cond);
-                consequence.iter_mut().for_each(|stmt| { self.quote_and_eval_inner_unquote(stmt) });
-                if let Some(alternative) = alternative {
-                    alternative.iter_mut().for_each(|stmt| { self.quote_and_eval_inner_unquote(stmt) });
-                }
-            },
-            _ => ()
+            _ => false
         }
     }
+}
+
+impl Evaluator {
+
+    pub fn unquote(&mut self, expr: ast::Expr) -> ast::Expr {
+        let mut node = ast::Stmt::Expr(expr);
+        let unquote = self.eval(&vec![node]);
+        match unquote {
+            Some(object::Object::Int(x)) => ast::Expr::Literal(ast::Literal::Int(x)),
+            Some(object::Object::Bool(bool)) => ast::Expr::Literal(ast::Literal::Bool(bool)),
+            Some(object::Object::Quote(ast::Stmt::Expr(in_quote_expr))) => {
+                in_quote_expr
+            },
+            Some(object::Object::Null) => {
+                ast::Expr::Literal(ast::Literal::Int(-1))
+            },
+            _ => {
+                println!("debug what!!={:?}", unquote);
+                ast::Expr::Literal(ast::Literal::Int(-1))
+            }
+        }
+    }
+
+    pub fn is_unquote_call(&mut self, expr: &ast::Expr) -> bool {
+        match expr {
+            ast::Expr::Ident(ident_name) => {
+                ident_name.0 == "unquote"
+            },
+            _ => false
+        }
+    }
+}
+
+impl Evaluator {
 
     // add macro to env and filter out the macro define statement
     pub fn define_macros(&mut self, program: &mut ast::Program) -> () {
@@ -69,41 +69,69 @@ impl Evaluator {
         *program = program.iter().enumerate().filter(|&(i, _)| { !definition_indexes.contains(&i) }).map(|(i, stmt)| { stmt.clone() }).collect();
     }
 
+    // expand the macros to modify ast
     pub fn expand_macros(&mut self, program: &mut ast::Program) -> () {
         for stmt in program.iter_mut() {
-
             ast::modify(stmt, |expr| {
-
                 self.modifer(expr);
             });
         }
     }
 
-    pub fn modifer(&mut self, expr: &mut ast::Expr) {
-        match expr {
-            ast::Expr::Call { func, args } => {
-                let mut quoted_args: Vec<ast::Expr> = vec![];
-                for arg in args.iter() {
-                    let quoted_arg = ast::Expr::Call { func: Box::new(ast::Expr::Ident(ast::Ident("quote".to_owned()))), args: vec![arg.to_owned()] };
-                    quoted_args.push(quoted_arg);
-                }
-                let right_evaluated = self.eval(&vec![ast::Stmt::Expr(ast::Expr::Call { func: func.to_owned(), args: quoted_args.to_owned() })]);
-                if let Some(object::Object::Quote(ast::Stmt::Expr(right_expr))) = right_evaluated {
-                    *expr = right_expr;
-                }
-            },
-            ast::Expr::Infix(infix, left_expr, right_expr) => {
-                self.modifer(left_expr);
-                self.modifer(right_expr);
-            },
-            _ => {
-                // todo!()
-            }
-        }
+    // expand the inner macro unquote of one stmt
+    pub fn expand_inner(&mut self, stmt: &mut ast::Stmt) -> () {
+        ast::modify(stmt, |expr| {
+            self.inner_evaluate(expr);
+        });
     }
 }
 
+impl Evaluator {
 
+    pub fn modifer(&mut self, expr: &mut ast::Expr) {
+        if let ast::Expr::Call { func, args } = expr {
+            let mut quoted_args: Vec<ast::Expr> = vec![];
+            for arg in args.iter() {
+                let quoted_arg = ast::Expr::Call { func: Box::new(ast::Expr::Ident(ast::Ident("quote".to_owned()))), args: vec![arg.to_owned()] };
+                quoted_args.push(quoted_arg);
+            }
+            let right_evaluated = self.eval(&vec![ast::Stmt::Expr(ast::Expr::Call { func: func.to_owned(), args: quoted_args.to_owned() })]);
+            if let Some(object::Object::Quote(ast::Stmt::Expr(right_expr))) = right_evaluated {
+                *expr = right_expr;
+            }
+        }
+    }
+
+    pub fn inner_evaluate(&mut self, expr: &mut ast::Expr) {
+
+        match expr {
+            ast::Expr::Call { func, args } => {
+                if self.is_unquote_call(func.as_ref()) {
+                    let unquote_expr = args.clone().to_vec()[0].to_owned();
+                    *expr = self.unquote(unquote_expr);
+                }
+            },
+            ast::Expr::Infix(infix, left_expr, right_expr) => {
+                self.inner_evaluate(left_expr);
+                self.inner_evaluate(right_expr);
+            },
+            ast::Expr::Prefix(prefix, expr) => {
+                self.inner_evaluate(expr);
+            },
+            ast::Expr::If {cond, consequence, alternative } => {
+                self.inner_evaluate(cond);
+                consequence.iter_mut().for_each(|stmt| { self.expand_inner(stmt) });
+                if let Some(alternative) = alternative {
+                    alternative.iter_mut().for_each(|stmt| { self.expand_inner(stmt) });
+                }
+            },
+            _ => {
+                // todo
+            }
+        }
+    }
+
+}
 
 
 #[cfg(test)]
