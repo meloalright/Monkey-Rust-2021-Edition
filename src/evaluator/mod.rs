@@ -98,8 +98,8 @@ impl Evaluator {
                         env::Info::Succeed => None,
                     }
                 }
-            }
-            _ => todo!(),
+            },
+            ast::Stmt::Blank => None,
         }
     }
 }
@@ -209,7 +209,6 @@ impl Evaluator {
                 }
                 Some(object::Object::Error(msg)) => return Some(object::Object::Error(msg)),
                 obj => result = obj,
-                _ => todo!(),
             }
         }
 
@@ -231,7 +230,6 @@ impl Evaluator {
                 }
                 Some(object::Object::Error(msg)) => return Some(object::Object::Error(msg)),
                 obj => result = obj,
-                _ => todo!(),
             }
         }
 
@@ -355,7 +353,6 @@ impl Evaluator {
             ast::Infix::GTEQ => object::Object::Bool(left >= right),
             ast::Infix::Equal => object::Object::Bool(left == right),
             ast::Infix::NotEqual => object::Object::Bool(left != right),
-            _ => todo!(),
         }
     }
 
@@ -1111,7 +1108,6 @@ addTwo(2);
                     "unknown operator: Hello - World",
                 ))),
             ),
-            // todo cases
         ];
 
         for (input, expect) in tests {

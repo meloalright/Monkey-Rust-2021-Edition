@@ -47,9 +47,7 @@ impl Formatter {
 
     fn indent_str(&self, offset: i32) -> String {
         let indent = self.indent as i32;
-        let size = indent + offset;
-        // let size = if indent >= offset { indent + offset } else { 0 }; // TODO
-
+        let size = indent + offset; // infact offset always -1 to unindent the RBrace
         "  ".repeat(size as usize)
     }
     
@@ -79,8 +77,8 @@ impl Formatter {
     fn format_stmt(&mut self, stmt: Stmt) -> String {
         match stmt {
             Stmt::Let(ident, expr) => self.format_let_stmt(ident, expr),
-            Stmt::Const(ident, expr) => todo!(),
-            Stmt::ReAssign(ident, expr) => todo!(),
+            Stmt::Const(ident, expr) => self.format_const_stmt(ident, expr),
+            Stmt::ReAssign(ident, expr) => self.format_reassign_stmt(ident, expr),
             Stmt::Return(expr) => self.format_return_stmt(expr),
             Stmt::Expr(expr) => {
                 if Self::ignore_semicolon_expr(&expr) {
@@ -111,7 +109,7 @@ impl Formatter {
             } => self.format_if_expr(cond, consequence, alternative),
             Expr::Function { params, body } => self.format_func_expr(params, body),
             Expr::Call { func, args } => self.format_call_expr(func, args),
-            Expr::While { cond, consequence } => todo!(),
+            Expr::While { cond, consequence } => self.format_while_expr(cond, consequence),
             Expr::Macro { params, body } => self.format_macro_expr(params, body),
         }
     }
@@ -185,6 +183,7 @@ impl Formatter {
                 alternative: _,
             }
             | &Expr::Function { params: _, body: _ } => true,
+            | &Expr::While { cond: _, consequence: _ } => true,
             _ => false,
         }
     }
@@ -342,6 +341,30 @@ impl Formatter {
 
         result
     }
+
+    fn format_while_expr(
+        &mut self,
+        cond: Box<Expr>,
+        consequence: BlockStmt,
+    ) -> String {
+        let cond_str = self.format_expr(*cond, Precedence::Lowest);
+
+        self.indent += 1;
+
+        let consequence_str = self.format_block_stmt(consequence);
+
+        let result =  {
+            let indent_str = self.indent_str(-1);
+            format!(
+                "while ({}) {{\n{}\n{}}}",
+                cond_str, consequence_str, indent_str
+            )
+        };
+
+        self.indent -= 1;
+
+        result
+    }
 }
 
 impl Formatter {
@@ -429,12 +452,34 @@ impl Formatter {
     }
 }
 
-// let format precessor
+// assignment format precessor
 impl Formatter {
 
     fn format_let_stmt(&mut self, ident: Ident, expr: Expr) -> String {
         let ident_str = self.format_ident_expr(ident);
         let result = String::from(format!("let {} = ", ident_str));
+
+        self.column += result.len();
+
+        let expr_str = self.format_expr(expr, Precedence::Lowest);
+
+        format!("{}{};", result, expr_str)
+    }
+
+    fn format_const_stmt(&mut self, ident: Ident, expr: Expr) -> String {
+        let ident_str = self.format_ident_expr(ident);
+        let result = String::from(format!("const {} = ", ident_str));
+
+        self.column += result.len();
+
+        let expr_str = self.format_expr(expr, Precedence::Lowest);
+
+        format!("{}{};", result, expr_str)
+    }
+
+    fn format_reassign_stmt(&mut self, ident: Ident, expr: Expr) -> String {
+        let ident_str = self.format_ident_expr(ident);
+        let result = String::from(format!("{} = ", ident_str));
 
         self.column += result.len();
 
@@ -609,6 +654,21 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_const_stmt() {
+        let tests = vec![
+            ("const    foo= 1000", "const foo = 1000;"),
+            (
+                "const    test        =    \"string\"",
+                "const test = \"string\";",
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
+
 
     #[test]
     fn test_return_stmt() {
@@ -625,6 +685,20 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_reassign_stmt() {
+        let tests = vec![
+            ("    foo= 1000", "foo = 1000;"),
+            (
+                "    test        =    \"string\"",
+                "test = \"string\";",
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
 
     #[test]
     fn test_operator() {
@@ -734,6 +808,28 @@ if(         y){if(z)        { z; }}
       z;
     }
   }
+}"#,
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(String::from(expect), format(input));
+        }
+    }
+
+
+    #[test]
+    fn test_while_expr() {
+        let tests = vec![
+            (
+                r#"while ( 1) {  puts("ok"); if (a) { break;     } a = a + 1; continue   }"#,
+                r#"while (1) {
+  puts("ok");
+  if (a) {
+    break;
+  }
+  a = a + 1;
+  continue;
 }"#,
             ),
         ];
