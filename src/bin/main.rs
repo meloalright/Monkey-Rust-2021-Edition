@@ -22,7 +22,7 @@ fn main() {
                 rl.add_history_entry(&line);
                 let mut lexer = Lexer::new(&line);
                 let mut parser = Parser::new(lexer);
-                let program = parser.parse();
+                let mut program = parser.parse();
                 let errors = parser.get_errors();
 
                 if errors.len() > 0 {
@@ -32,6 +32,8 @@ fn main() {
                     continue;
                 }
 
+                evaluator.define_macros(&mut program);
+                evaluator.expand_macros(&mut program);
                 if let Some(evaluated) = evaluator.eval(&program) {
                     println!("{}\n", evaluated);
                 }

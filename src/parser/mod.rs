@@ -382,6 +382,7 @@ impl Parser {
             Token::If => self.parse_if_expr(),
             Token::While => self.parse_while_expr(),
             Token::Function => self.parse_function_expr(),
+            Token::Macro => self.parse_macro_expr(),
             _ => {
                 self.error_no_prefix_parser();
                 None
@@ -423,7 +424,6 @@ impl Parser {
                 _ => return left,
             }
         }
-        // // todo
 
         left
     }
@@ -710,6 +710,74 @@ impl Parser {
         })
     }
 }
+
+
+///
+// Macro Parsing Implement
+///
+impl Parser {
+    /// function expr
+    fn parse_macro_expr(&mut self) -> Option<Expr> {
+        if !self.assert_next_token(Token::LParen) {
+            return None;
+        }
+
+        self.walk_token();
+
+        let params = match self.parse_macro_args() {
+            Some(params) => params,
+            None => return None,
+        };
+
+        if !self.assert_next_token(Token::LBrace) {
+            return None;
+        }
+
+        self.walk_token();
+
+        Some(Expr::Macro {
+            params,
+            body: self.parse_block_stmt(),
+        })
+    }
+
+    /// macro args
+    fn parse_macro_args(&mut self) -> Option<Vec<Ident>> {
+        let mut args = vec![];
+
+        if self.next_token_is(Token::RParen) {
+            self.walk_token();
+            return Some(args);
+        }
+
+        self.walk_token();
+
+        match self.parse_ident() {
+            Some(ident) => args.push(ident),
+            None => return None,
+        };
+
+        while self.next_token_is(Token::Comma) {
+            self.walk_token();
+            self.walk_token();
+
+            match self.parse_ident() {
+                Some(ident) => args.push(ident),
+                None => return None,
+            };
+        }
+
+        if !self.assert_next_token(Token::RParen) {
+            return None;
+        }
+
+        self.walk_token();
+
+        Some(args)
+    }
+
+}
+
 
 ///
 // Precedence Parsing Implement (which means "运算优先级")
@@ -1968,5 +2036,54 @@ return 993322;
         let program = parser.parse();
 
         check_parse_errors(&mut parser);
+    }
+
+    
+    #[test]
+    fn test_macro_expr() {
+        let input = "macro(x, y) { x + y; }";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Expr(Expr::Macro {
+                params: vec![Ident(String::from("x")), Ident(String::from("y"))],
+                body: vec![Stmt::Expr(Expr::Infix(
+                    Infix::Plus,
+                    Box::new(Expr::Ident(Ident(String::from("x")))),
+                    Box::new(Expr::Ident(Ident(String::from("y")))),
+                ))],
+            })],
+            program,
+        );
+    }
+
+    #[test]
+    fn test_macro_call() {
+        let input = "let a = 1 + macro_call(2, 3)";
+
+        let mut parser = Parser::new(Lexer::new(input));
+        let program = parser.parse();
+
+        check_parse_errors(&mut parser);
+        assert_eq!(
+            vec![Stmt::Let(
+                Ident(String::from("a")),
+                Expr::Infix(
+                    Infix::Plus,
+                    Box::new(Expr::Literal(Literal::Int(1))),
+                    Box::new(Expr::Call {
+                        func: Box::new(Expr::Ident(Ident(String::from("macro_call")))),
+                        args: vec![
+                            Expr::Literal(Literal::Int(2)),
+                            Expr::Literal(Literal::Int(3))
+                        ]
+                    })
+                )
+            )],
+            program,
+        );
     }
 }

@@ -3,6 +3,7 @@ pub mod lexer;
 pub mod ast;
 pub mod parser;
 pub mod evaluator;
+pub mod formatter;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right

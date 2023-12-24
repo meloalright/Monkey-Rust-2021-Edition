@@ -23,6 +23,8 @@ pub enum Object {
     ContinueStatement,
     Error(String),
     Null,
+    Macro(Vec<ast::Ident>, ast::BlockStmt, Rc<RefCell<env::Env>>),
+    Quote(ast::Stmt),
 }
 
 /// This is actually repr
@@ -70,6 +72,20 @@ impl fmt::Display for Object {
             Object::BreakStatement => write!(f, "BreakStatement"),
             Object::ContinueStatement => write!(f, "ContinueStatement"),
             Object::ReturnValue(ref value) => write!(f, "ReturnValue({})", value),
+            Object::Macro(ref params, _, _) => {
+                let mut result = String::new();
+                for (i, ast::Ident(ref s)) in params.iter().enumerate() {
+                    if i < 1 {
+                        result.push_str(&s.to_string());
+                    } else {
+                        result.push_str(&format!(", {}", s));
+                    }
+                }
+                write!(f, "macro({}) {{ ... }}", result)
+            }
+            Object::Quote(ref stmt) => {
+                write!(f, "QUOTE({:?})", stmt)
+            }
             Object::Error(ref value) => write!(f, "Error({})", value),
         }
     }
@@ -171,5 +187,11 @@ mod tests {
     fn test_object_error() {
         let obj = Object::Error("something went wrong".to_string());
         assert_eq!(obj.to_string(), "Error(something went wrong)");
+    }
+
+    #[test]
+    fn test_quote() {
+        let obj = Object::Quote(ast::Stmt::Blank);
+        assert_eq!(obj.to_string(), "QUOTE(Blank)");
     }
 }

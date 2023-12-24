@@ -1,4 +1,3 @@
-
 #[derive(PartialEq, Clone, Debug)]
 pub struct Ident(pub String);
 
@@ -86,6 +85,10 @@ pub enum Expr {
         func: Box<Expr>,
         args: Vec<Expr>,
     },
+    Macro {
+        params: Vec<Ident>,
+        body: BlockStmt,
+    },
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -119,4 +122,30 @@ pub enum Precedence {
     Prefix,      // -X or !X
     Call,        // myFunction(x)
     Index,       // array[index]
+}
+
+pub fn modify<F>(mut stmt: &mut Stmt, mut modifier: F) -> ()
+where
+    F: FnMut(&mut Expr) -> (),
+{
+    match stmt {
+        Stmt::Let(_, ref mut expr) => {
+            modifier(expr);
+        },
+        Stmt::Const(_, expr) => {
+            modifier(expr);
+        },
+        Stmt::Break => {},
+        Stmt::Blank => {},
+        Stmt::Continue => {},
+        Stmt::Return(expr) => {
+            modifier(expr);
+        },
+        Stmt::Expr(expr) => {
+            modifier(expr);
+        },
+        Stmt::ReAssign(_, expr) => {
+            modifier(expr);
+        }
+    }
 }

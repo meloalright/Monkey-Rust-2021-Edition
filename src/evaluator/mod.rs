@@ -1,10 +1,13 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::ast;
+
 pub mod builtins;
 pub mod env;
 pub mod object;
-use crate::ast;
+
+mod macro_expansion;
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Evaluator {
@@ -95,8 +98,8 @@ impl Evaluator {
                         env::Info::Succeed => None,
                     }
                 }
-            }
-            _ => todo!(),
+            },
+            ast::Stmt::Blank => None,
         }
     }
 }
@@ -206,7 +209,6 @@ impl Evaluator {
                 }
                 Some(object::Object::Error(msg)) => return Some(object::Object::Error(msg)),
                 obj => result = obj,
-                _ => todo!(),
             }
         }
 
@@ -228,7 +230,6 @@ impl Evaluator {
                 }
                 Some(object::Object::Error(msg)) => return Some(object::Object::Error(msg)),
                 obj => result = obj,
-                _ => todo!(),
             }
         }
 
@@ -270,6 +271,11 @@ impl Evaluator {
                 alternative,
             } => self.eval_if_expr(&*cond, consequence, alternative),
             ast::Expr::Function { params, body } => Some(object::Object::Function(
+                params.clone(),
+                body.clone(),
+                Rc::clone(&self.env),
+            )),
+            ast::Expr::Macro { params, body } => Some(object::Object::Macro(
                 params.clone(),
                 body.clone(),
                 Rc::clone(&self.env),
@@ -347,7 +353,6 @@ impl Evaluator {
             ast::Infix::GTEQ => object::Object::Bool(left >= right),
             ast::Infix::Equal => object::Object::Bool(left == right),
             ast::Infix::NotEqual => object::Object::Bool(left != right),
-            _ => todo!(),
         }
     }
 
@@ -370,6 +375,10 @@ impl Evaluator {
 ///
 impl Evaluator {
     fn eval_call_expr(&mut self, func: &Box<ast::Expr>, args: &Vec<ast::Expr>) -> object::Object {
+        if self.is_quote_call(func.as_ref()) {
+            return self.quote(args[0].clone())
+        }
+
         let args = args
             .iter()
             .map(|e| self.eval_expr(e).unwrap_or(object::Object::Null))
@@ -388,6 +397,7 @@ impl Evaluator {
                     ));
                 }
             }
+            Some(object::Object::Macro(params, body, env)) => (params, body, env),
             Some(o) => return Self::error(format!("{} is not valid function", o)),
             None => return object::Object::Null,
         };
@@ -530,10 +540,15 @@ mod tests {
     use std::rc::Rc;
 
     fn eval(input: &str) -> Option<object::Object> {
-        Evaluator {
+        let lexer = Lexer::new(&input);
+        let mut parser = Parser::new(lexer);
+        let mut program = parser.parse();
+        let mut evaluator = Evaluator {
             env: Rc::new(RefCell::new(env::Env::from(new_builtins()))),
-        }
-        .eval(&Parser::new(Lexer::new(input)).parse())
+        };
+        evaluator.define_macros(&mut program);
+        evaluator.expand_macros(&mut program);
+        evaluator.eval(&mut program)
     }
 
     /// cases in edition 2015
@@ -1098,7 +1113,6 @@ addTwo(2);
                     "unknown operator: Hello - World",
                 ))),
             ),
-            // todo cases
         ];
 
         for (input, expect) in tests {
@@ -1186,4 +1200,5 @@ f()
 
         assert_eq!(Some(object::Object::Int(5)), eval(input));
     }
+
 }
