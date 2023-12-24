@@ -7,7 +7,7 @@ pub mod builtins;
 pub mod env;
 pub mod object;
 
-mod expand;
+mod macro_expansion;
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Evaluator {
